@@ -95,6 +95,7 @@ export default function Guide() {
   const [demoState, setDemoState] = useState('idle');
   const [tokens, setTokens] = useState([]);
   const [tokenName, setTokenName] = useState('My verification app');
+  const [tokenExpiry, setTokenExpiry] = useState('90');
   const [newToken, setNewToken] = useState(null);
   const [tokenState, setTokenState] = useState('idle');
   const [tokenError, setTokenError] = useState('');
@@ -117,7 +118,7 @@ export default function Guide() {
     setTokenState('creating');
     setTokenError('');
     try {
-      const token = await api.createServiceToken(tokenName);
+      const token = await api.createServiceToken(tokenName, tokenExpiry === 'never' ? null : Number(tokenExpiry));
       setNewToken(token);
       setTokenState('idle');
       await loadTokens();
@@ -178,6 +179,12 @@ export default function Guide() {
                 <label className="block text-sm font-medium text-gray-900" htmlFor="token-name">Token name</label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input className="input flex-1" id="token-name" maxLength="80" onChange={(event) => setTokenName(event.target.value)} value={tokenName} />
+                  <select className="input sm:w-36" id="token-expiry" onChange={(event) => setTokenExpiry(event.target.value)} value={tokenExpiry}>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="365">1 year</option>
+                    <option value="never">Never expires</option>
+                  </select>
                   <button className="btn-primary shrink-0" disabled={tokenState === 'creating'} type="submit">
                     {tokenState === 'creating' ? 'Generating...' : 'Generate token'}
                   </button>
@@ -199,7 +206,7 @@ export default function Guide() {
                     <div className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2 text-sm" key={token.id}>
                       <div className="min-w-0">
                         <p className="truncate font-medium text-gray-900">{token.name}</p>
-                        <p className="text-xs text-gray-500">{token.token_prefix}... {token.revoked_at ? 'revoked' : 'active'}</p>
+                        <p className="text-xs text-gray-500">{token.token_prefix}... {token.revoked_at ? 'revoked' : token.expires_at && new Date(token.expires_at) < new Date() ? 'expired' : 'active'}</p>
                       </div>
                       {!token.revoked_at && <button className="btn-ghost shrink-0 text-red-700" onClick={() => revokeToken(token.id)} type="button">Revoke</button>}
                     </div>

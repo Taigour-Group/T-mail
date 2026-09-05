@@ -39,6 +39,10 @@ export const requireService = asyncH(async (req, res, next) => {
   if (!validEnvToken && !userToken) {
     return res.status(401).json({ error: 'Invalid service token' });
   }
+  if (userToken && !userToken.scopes.includes('send:email')) {
+    return res.status(403).json({ error: 'Service token is not allowed to send email' });
+  }
+  req.serviceAuth = validEnvToken ? { type: 'environment' } : { type: 'user', ...userToken };
   next();
 });
 

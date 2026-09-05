@@ -45,7 +45,7 @@ export const api = {
 
   // service tokens
   serviceTokens: () => req('/api/tokens'),
-  createServiceToken: (name) => req('/api/tokens', { method: 'POST', body: JSON.stringify({ name }) }),
+  createServiceToken: (name, expiresInDays) => req('/api/tokens', { method: 'POST', body: JSON.stringify({ name, expiresInDays }) }),
   revokeServiceToken: (id) => req(`/api/tokens/${id}`, { method: 'DELETE' }),
 
   // attachments (multipart upload; JSON metadata back)
