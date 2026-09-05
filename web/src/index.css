@@ -21,4 +21,7 @@
   .nav-item { @apply flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer select-none; }
   .nav-item-active { @apply bg-accent/10 text-accent hover:bg-accent/10; }
   .chip { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium; }
+  .email-content img { max-width: 100%; height: auto; }
+  .email-content table { max-width: 100%; }
+  .email-content a { color: #2563eb; text-decoration: underline; }
 }

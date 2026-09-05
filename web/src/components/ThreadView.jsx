@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { api } from '../lib/api.js';
 
 function fmt(iso) {
@@ -121,7 +122,19 @@ export default function ThreadView({ threadId, refreshToken = 0, onReply, onChan
                 </div>
               </div>
 
-              <div className="mt-3 text-sm whitespace-pre-wrap break-words text-gray-800">{m.bodyText}</div>
+              {m.bodyHtml ? (
+                <div
+                  className="email-content mt-3 max-w-full overflow-x-auto break-words text-sm text-gray-800"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(m.bodyHtml, {
+                      USE_PROFILES: { html: true },
+                      FORBID_TAGS: ['form', 'input', 'button', 'iframe', 'object', 'embed'],
+                    }),
+                  }}
+                />
+              ) : (
+                <div className="mt-3 whitespace-pre-wrap break-words text-sm text-gray-800">{m.bodyText}</div>
+              )}
 
               {m.attachments.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">

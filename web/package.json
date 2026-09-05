@@ -9,6 +9,7 @@
     "preview": "vite preview --port 5273"
   },
   "dependencies": {
+    "dompurify": "^3.4.14",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"
