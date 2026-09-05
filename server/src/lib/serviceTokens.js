@@ -20,7 +20,15 @@ export async function createServiceToken({ mailboxId, name, expiresInDays }) {
     scopes: ['send:email'],
     expires_at: expiresAt,
   }).select('id, name, token_prefix, scopes, expires_at, created_at').single();
-  if (error) throw error;
+  if (error) {
+    if (error.code === '42P01' || error.code === '42703' || error.message?.includes('service_tokens')) {
+      const setupError = new Error('Service-token storage is not initialized. Apply server/db/schema.sql in the production Supabase project.');
+      setupError.status = 503;
+      setupError.publicMessage = setupError.message;
+      throw setupError;
+    }
+    throw error;
+  }
   return { ...data, token };
 }
 
