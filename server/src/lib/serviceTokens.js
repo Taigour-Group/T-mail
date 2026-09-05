@@ -7,13 +7,13 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-export async function createServiceToken({ mailboxId, name, expiresInDays }) {
+export async function createServiceToken({ workspaceId, name, expiresInDays }) {
   const token = `${TOKEN_PREFIX}${crypto.randomBytes(32).toString('hex')}`;
   const expiresAt = expiresInDays
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
   const { data, error } = await supabase.from('service_tokens').insert({
-    mailbox_id: mailboxId,
+    workspace_id: workspaceId,
     name,
     token_prefix: token.slice(0, 18),
     token_hash: hashToken(token),
@@ -36,20 +36,20 @@ export async function createServiceToken({ mailboxId, name, expiresInDays }) {
   return { ...data, token };
 }
 
-export async function listServiceTokens(mailboxId) {
+export async function listServiceTokens(workspaceId) {
   const { data, error } = await supabase.from('service_tokens')
     .select('id, name, token_prefix, scopes, expires_at, last_used_at, revoked_at, created_at')
-    .eq('mailbox_id', mailboxId)
+    .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
 }
 
-export async function revokeServiceToken({ mailboxId, tokenId }) {
+export async function revokeServiceToken({ workspaceId, tokenId }) {
   const { data, error } = await supabase.from('service_tokens')
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', tokenId)
-    .eq('mailbox_id', mailboxId)
+    .eq('workspace_id', workspaceId)
     .is('revoked_at', null)
     .select('id')
     .maybeSingle();
@@ -60,7 +60,7 @@ export async function revokeServiceToken({ mailboxId, tokenId }) {
 export async function findActiveServiceToken(token) {
   if (!token.startsWith(TOKEN_PREFIX)) return null;
   const { data, error } = await supabase.from('service_tokens')
-    .select('id, mailbox_id, scopes, expires_at')
+    .select('id, workspace_id, scopes, expires_at')
     .eq('token_hash', hashToken(token))
     .is('revoked_at', null)
     .maybeSingle();

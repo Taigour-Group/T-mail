@@ -99,6 +99,9 @@ export default function Guide() {
   const [newToken, setNewToken] = useState(null);
   const [tokenState, setTokenState] = useState('idle');
   const [tokenError, setTokenError] = useState('');
+  const [businessAccount, setBusinessAccount] = useState(null);
+  const [businessForm, setBusinessForm] = useState({ workspaceName: '', website: '' });
+  const [businessState, setBusinessState] = useState('idle');
 
   const loadTokens = async () => {
     try {
@@ -109,9 +112,39 @@ export default function Guide() {
     }
   };
 
+  const loadBusinessAccount = async () => {
+    try {
+      const result = await api.businessAccount();
+      setBusinessAccount(result.workspace);
+      if (result.workspace) {
+        setBusinessForm({
+          workspaceName: result.workspace.name,
+          website: result.workspace.website || '',
+        });
+      }
+    } catch (error) {
+      setTokenError(error.message);
+    }
+  };
+
   useEffect(() => {
     loadTokens();
+    loadBusinessAccount();
   }, []);
+
+  const requestVerification = async (event) => {
+    event.preventDefault();
+    setBusinessState('submitting');
+    setTokenError('');
+    try {
+      const result = await api.requestBusinessAccount(businessForm);
+      setBusinessAccount(result.account);
+      setBusinessState('idle');
+    } catch (error) {
+      setTokenError(error.message);
+      setBusinessState('idle');
+    }
+  };
 
   const createToken = async (event) => {
     event.preventDefault();
@@ -174,8 +207,25 @@ export default function Guide() {
         <div className="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1fr)_260px]">
           <div className="max-w-3xl space-y-10">
             <Step id="setup" number="1" title="Configure your service credentials">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950">
+                <p className="font-semibold">TGO Workspace verification</p>
+                <p className="mt-1 text-sm leading-6">Create a workspace for your team. Service tokens belong to the workspace and are available after the TGO team verifies it.</p>
+                {businessAccount?.verification_status !== 'verified' && (
+                  <form className="mt-4 space-y-3" onSubmit={requestVerification}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input className="input bg-white" required maxLength="120" placeholder="Workspace name" value={businessForm.workspaceName} onChange={(event) => setBusinessForm({ ...businessForm, workspaceName: event.target.value })} />
+                      <input className="input bg-white" maxLength="200" placeholder="Company website (optional)" type="url" value={businessForm.website} onChange={(event) => setBusinessForm({ ...businessForm, website: event.target.value })} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button className="btn-primary" disabled={businessState === 'submitting'} type="submit">{businessState === 'submitting' ? 'Creating workspace...' : 'Request verification'}</button>
+                      {businessAccount && <span className="text-sm font-medium capitalize">Status: {businessAccount.verification_status}</span>}
+                    </div>
+                  </form>
+                )}
+                {businessAccount?.verification_status === 'verified' && <p className="mt-3 text-sm font-medium text-green-800">Workspace verified by the TGO team. Your team can create service tokens.</p>}
+              </div>
               <p>Create a token below, copy it once, and save it in your application backend as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">TMAIL_SERVICE_TOKEN</code>. This token can send verification and other system emails through T-mail.</p>
-              <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-4" onSubmit={createToken}>
+              {businessAccount?.verification_status === 'verified' && <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-4" onSubmit={createToken}>
                 <label className="block text-sm font-medium text-gray-900" htmlFor="token-name">Token name</label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input className="input flex-1" id="token-name" maxLength="80" onChange={(event) => setTokenName(event.target.value)} value={tokenName} />
@@ -189,7 +239,7 @@ export default function Guide() {
                     {tokenState === 'creating' ? 'Generating...' : 'Generate token'}
                   </button>
                 </div>
-              </form>
+              </form>}
               {newToken && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
                   <p className="font-semibold">Copy this token now. It will not be shown again.</p>

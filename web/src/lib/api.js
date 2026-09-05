@@ -48,6 +48,8 @@ export const api = {
   serviceTokens: () => req('/api/tokens'),
   createServiceToken: (name, expiresInDays) => req('/api/tokens', { method: 'POST', body: JSON.stringify({ name, expiresInDays }) }),
   revokeServiceToken: (id) => req(`/api/tokens/${id}`, { method: 'DELETE' }),
+  businessAccount: () => req('/api/business-account'),
+  requestBusinessAccount: (payload) => req('/api/business-account', { method: 'POST', body: JSON.stringify(payload) }),
 
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {
