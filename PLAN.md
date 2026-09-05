@@ -112,6 +112,12 @@ Authorization: Bearer <TMAIL_SERVICE_TOKEN>
 
 This is what lets TGO ID verify users who log into third-party products.
 
+### User-generated production service tokens
+
+Users create application tokens from the authenticated **OTP integration guide** in the web app (`/guide`). The browser session is required to create, list, or revoke a token; the raw value is returned only once. The user's backend stores that value as its own `TMAIL_SERVICE_TOKEN` environment secret and sends it as a bearer token to `/api/system/send`.
+
+The server stores only a SHA-256 hash plus safe metadata (name, prefix, scope, expiry, last-used time, and revocation time). User tokens currently have the least-privilege `send:email` scope and default to a 90-day expiry. The existing server `.env` `TMAIL_SERVICE_TOKEN` remains a separate infrastructure credential for trusted first-party machine integrations and is never shown in the user interface.
+
 ---
 
 ## 8. HTTP API (user-facing, cookie-authed)
