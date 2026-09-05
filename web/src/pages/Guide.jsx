@@ -123,7 +123,7 @@ export default function Guide() {
       setTokenState('idle');
       await loadTokens();
     } catch (error) {
-      setTokenError(error.message);
+      setTokenError(`${error.message}${error.requestId ? ` (request ${error.requestId})` : ''}`);
       setTokenState('idle');
     }
   };

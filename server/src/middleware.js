@@ -54,8 +54,9 @@ export function notFound(req, res) {
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
   const status = err.status || 500;
-  if (status >= 500) console.error('✖', err);
+  if (status >= 500) console.error('✖', req.requestId, err);
   res.status(status).json({
     error: err.publicMessage || (status >= 500 && env.isProd ? 'Internal server error' : err.message),
+    requestId: req.requestId,
   });
 }

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
@@ -20,6 +21,12 @@ import { tokensRouter } from './routes/tokens.js';
 
 const app = express();
 if (env.isProd) app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader('x-tmail-request-id', req.requestId);
+  next();
+});
 
 const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
