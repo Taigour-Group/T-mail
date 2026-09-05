@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
@@ -93,124 +93,6 @@ function Step({ id, number, title, children }) {
 export default function Guide() {
   const { user, logout } = useAuth();
   const [demoState, setDemoState] = useState('idle');
-  const [tokens, setTokens] = useState([]);
-  const [tokenName, setTokenName] = useState('My verification app');
-  const [tokenExpiry, setTokenExpiry] = useState('90');
-  const [newToken, setNewToken] = useState(null);
-  const [tokenState, setTokenState] = useState('idle');
-  const [tokenError, setTokenError] = useState('');
-  const [businessAccount, setBusinessAccount] = useState(null);
-  const [businessForm, setBusinessForm] = useState({ workspaceName: '', website: '' });
-  const [businessState, setBusinessState] = useState('idle');
-  const [workspaceAddresses, setWorkspaceAddresses] = useState([]);
-  const [addressDomain, setAddressDomain] = useState('tgo.com');
-  const [addressForm, setAddressForm] = useState({ localPart: '', label: '' });
-  const [addressState, setAddressState] = useState('idle');
-
-  const loadTokens = async () => {
-    try {
-      const result = await api.serviceTokens();
-      setTokens(result.tokens);
-    } catch (error) {
-      setTokenError(error.message);
-    }
-  };
-
-  const loadBusinessAccount = async () => {
-    try {
-      const result = await api.businessAccount();
-      setBusinessAccount(result.workspace);
-      if (result.workspace) {
-        setBusinessForm({
-          workspaceName: result.workspace.name,
-          website: result.workspace.website || '',
-        });
-        if (result.workspace.verification_status === 'verified') await loadWorkspaceAddresses();
-      }
-    } catch (error) {
-      setTokenError(error.message);
-    }
-  };
-
-  const loadWorkspaceAddresses = async () => {
-    try {
-      const result = await api.workspaceAddresses();
-      setWorkspaceAddresses(result.addresses);
-      setAddressDomain(result.domain);
-    } catch (error) {
-      if (error.status !== 403) setTokenError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    loadTokens();
-    loadBusinessAccount();
-  }, []);
-
-  const requestVerification = async (event) => {
-    event.preventDefault();
-    setBusinessState('submitting');
-    setTokenError('');
-    try {
-      const result = await api.requestBusinessAccount(businessForm);
-      setBusinessAccount(result.workspace);
-      await loadWorkspaceAddresses();
-      setBusinessState('idle');
-    } catch (error) {
-      setTokenError(error.message);
-      setBusinessState('idle');
-    }
-  };
-
-  const createToken = async (event) => {
-    event.preventDefault();
-    setTokenState('creating');
-    setTokenError('');
-    try {
-      const token = await api.createServiceToken(tokenName, tokenExpiry === 'never' ? null : Number(tokenExpiry));
-      setNewToken(token);
-      setTokenState('idle');
-      await loadTokens();
-    } catch (error) {
-      setTokenError(`${error.message}${error.requestId ? ` (request ${error.requestId})` : ''}`);
-      setTokenState('idle');
-    }
-  };
-
-  const revokeToken = async (id) => {
-    setTokenError('');
-    try {
-      await api.revokeServiceToken(id);
-      await loadTokens();
-    } catch (error) {
-      setTokenError(error.message);
-    }
-  };
-
-  const createAddress = async (event) => {
-    event.preventDefault();
-    setAddressState('creating');
-    setTokenError('');
-    try {
-      await api.createWorkspaceAddress(addressForm.localPart, addressForm.label);
-      setAddressForm({ localPart: '', label: '' });
-      await loadWorkspaceAddresses();
-      setAddressState('idle');
-    } catch (error) {
-      setTokenError(error.message);
-      setAddressState('idle');
-    }
-  };
-
-  const deleteAddress = async (id) => {
-    setTokenError('');
-    try {
-      await api.deleteWorkspaceAddress(id);
-      await loadWorkspaceAddresses();
-    } catch (error) {
-      setTokenError(error.message);
-    }
-  };
 
   const sendDemo = async () => {
     setDemoState('sending');
@@ -248,82 +130,9 @@ export default function Guide() {
         <div className="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1fr)_260px]">
           <div className="max-w-3xl space-y-10">
             <Step id="setup" number="1" title="Configure your service credentials">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950">
-                <p className="font-semibold">TGO Workspace verification</p>
-                <p className="mt-1 text-sm leading-6">Create a workspace for your team. Service tokens belong to the workspace and are available after the TGO team verifies it.</p>
-                {businessAccount?.verification_status !== 'verified' && (
-                  <form className="mt-4 space-y-3" onSubmit={requestVerification}>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="input bg-white" required maxLength="120" placeholder="Workspace name" value={businessForm.workspaceName} onChange={(event) => setBusinessForm({ ...businessForm, workspaceName: event.target.value })} />
-                      <input className="input bg-white" maxLength="200" placeholder="Company website (optional)" type="url" value={businessForm.website} onChange={(event) => setBusinessForm({ ...businessForm, website: event.target.value })} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button className="btn-primary" disabled={businessState === 'submitting'} type="submit">{businessState === 'submitting' ? 'Creating workspace...' : 'Request verification'}</button>
-                      {businessAccount && <span className="text-sm font-medium capitalize">Status: {businessAccount.verification_status}</span>}
-                    </div>
-                  </form>
-                )}
-                {businessAccount?.verification_status === 'verified' && <p className="mt-3 text-sm font-medium text-green-800">Workspace verified by the TGO team. Your team can create service tokens.</p>}
-              </div>
-              {businessAccount?.verification_status === 'verified' && <div className="rounded-lg border border-gray-200 bg-white p-4">
-                <p className="font-semibold text-gray-950">Custom workspace addresses</p>
-                <p className="mt-1 text-sm leading-6">Create addresses such as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">no-reply@{addressDomain}</code>. Incoming messages are delivered to your T-mail inbox.</p>
-                <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={createAddress}>
-                  <div className="flex min-w-0 flex-1 items-center">
-                    <input className="input min-w-0 flex-1 rounded-r-none" required maxLength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]" placeholder="no-reply" value={addressForm.localPart} onChange={(event) => setAddressForm({ ...addressForm, localPart: event.target.value })} />
-                    <span className="border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500">@{addressDomain}</span>
-                  </div>
-                  <input className="input sm:w-44" required maxLength="80" placeholder="Label" value={addressForm.label} onChange={(event) => setAddressForm({ ...addressForm, label: event.target.value })} />
-                  <button className="btn-primary shrink-0" disabled={addressState === 'creating'} type="submit">{addressState === 'creating' ? 'Creating...' : 'Create address'}</button>
-                </form>
-                {workspaceAddresses.length > 0 && <div className="mt-4 space-y-2">
-                  {workspaceAddresses.map((item) => <div className="flex items-center justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm" key={item.id}>
-                    <div className="min-w-0"><p className="truncate font-medium text-gray-900">{item.address}</p><p className="text-xs text-gray-500">{item.label}</p></div>
-                    <button className="btn-ghost shrink-0 text-red-700" onClick={() => deleteAddress(item.id)} type="button">Delete</button>
-                  </div>)}
-                </div>}
-              </div>}
-              <p>Create a token below, copy it once, and save it in your application backend as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">TMAIL_SERVICE_TOKEN</code>. This token can send verification and other system emails through T-mail.</p>
-              {businessAccount?.verification_status === 'verified' && <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-4" onSubmit={createToken}>
-                <label className="block text-sm font-medium text-gray-900" htmlFor="token-name">Token name</label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input className="input flex-1" id="token-name" maxLength="80" onChange={(event) => setTokenName(event.target.value)} value={tokenName} />
-                  <select className="input sm:w-36" id="token-expiry" onChange={(event) => setTokenExpiry(event.target.value)} value={tokenExpiry}>
-                    <option value="30">30 days</option>
-                    <option value="90">90 days</option>
-                    <option value="365">1 year</option>
-                    <option value="never">Never expires</option>
-                  </select>
-                  <button className="btn-primary shrink-0" disabled={tokenState === 'creating'} type="submit">
-                    {tokenState === 'creating' ? 'Generating...' : 'Generate token'}
-                  </button>
-                </div>
-              </form>}
-              {newToken && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
-                  <p className="font-semibold">Copy this token now. It will not be shown again.</p>
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <code className="min-w-0 flex-1 break-all rounded bg-white px-3 py-2 text-xs">{newToken.token}</code>
-                    <button className="btn-outline shrink-0" onClick={() => navigator.clipboard.writeText(newToken.token)} type="button">Copy token</button>
-                  </div>
-                </div>
-              )}
-              {tokens.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-gray-900">Your tokens</p>
-                  {tokens.map((token) => (
-                    <div className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2 text-sm" key={token.id}>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-gray-900">{token.name}</p>
-                        <p className="text-xs text-gray-500">{token.token_prefix}... {token.revoked_at ? 'revoked' : token.expires_at && new Date(token.expires_at) < new Date() ? 'expired' : 'active'}</p>
-                      </div>
-                      {!token.revoked_at && <button className="btn-ghost shrink-0 text-red-700" onClick={() => revokeToken(token.id)} type="button">Revoke</button>}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {tokenError && <p className="text-sm font-medium text-red-700">{tokenError}</p>}
-              <p>Keep this token on your backend only. Never place it in browser JavaScript, mobile code, logs, or a public repository.</p>
+              <p>Workspace members manage verification, custom email addresses, and service tokens in the dedicated workspace dashboard.</p>
+              <Link className="btn-primary inline-flex" to="/workspace">Open workspace dashboard</Link>
+              <p>After the TGO team verifies your workspace, create a service token there and store it in your application backend as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">TMAIL_SERVICE_TOKEN</code>.</p>
             </Step>
 
             <Step id="generate" number="2" title="Generate and store the OTP">

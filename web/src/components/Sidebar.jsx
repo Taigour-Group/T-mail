@@ -49,6 +49,9 @@ export default function Sidebar({
         <Link to="/guide" className="nav-item mt-4">
           <span>OTP integration guide</span>
         </Link>
+        <Link to="/workspace" className="nav-item">
+          <span>Workspace dashboard</span>
+        </Link>
       </nav>
 
       <div className="border-t border-gray-200 p-3">
