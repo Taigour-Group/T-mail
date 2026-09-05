@@ -21,6 +21,7 @@ import { tokensRouter } from './routes/tokens.js';
 import { businessAccountsRouter } from './routes/businessAccounts.js';
 import { workspaceAddressesRouter } from './routes/workspaceAddresses.js';
 import { workspaceTemplatesRouter } from './routes/workspaceTemplates.js';
+import { workspaceSendRouter } from './routes/workspaceSend.js';
 
 const app = express();
 if (env.isProd) app.set('trust proxy', 1);
@@ -59,6 +60,7 @@ app.use('/api/tokens', tokensRouter);
 app.use('/api/business-account', businessAccountsRouter);
 app.use('/api/workspace-addresses', workspaceAddressesRouter);
 app.use('/api/workspace-templates', workspaceTemplatesRouter);
+app.use('/api/workspace-send', workspaceSendRouter);
 
 // In production Render runs one service, so serve the Vite app from Express.
 // API and auth routes above always take precedence over this SPA fallback.

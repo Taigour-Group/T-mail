@@ -18,6 +18,7 @@ export default function WorkspaceDashboard() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [templateForm, setTemplateForm] = useState({ name: '', slug: '', senderAddress: '', subject: '', textBody: '', htmlBody: '' });
+  const [sendForm, setSendForm] = useState({ to: '', template: '', from: '', subject: '', text: '', html: '', vars: '{\n  "name": "Customer"\n}' });
 
   const PREBUILT_TEMPLATES = [
     { name: 'Login verification', slug: 'login-verification', subject: 'Your {{code}} verification code', textBody: 'Your verification code is {{code}}. It expires in 10 minutes.', htmlBody: '<h1>Verify your sign-in</h1><p>Your verification code is <strong>{{code}}</strong>.</p>' },
@@ -135,6 +136,30 @@ export default function WorkspaceDashboard() {
 
   const usePreset = (preset) => setTemplateForm((current) => ({ ...current, ...preset }));
 
+  const sendEmail = async (event) => {
+    event.preventDefault();
+    setBusy('send');
+    setError('');
+    try {
+      let vars = {};
+      if (sendForm.template && sendForm.vars.trim()) vars = JSON.parse(sendForm.vars);
+      await api.sendWorkspaceEmail({
+        to: sendForm.to.split(',').map((address) => address.trim()).filter(Boolean),
+        template: sendForm.template || undefined,
+        vars,
+        from: sendForm.from || undefined,
+        subject: sendForm.subject || undefined,
+        text: sendForm.text || undefined,
+        html: sendForm.html || undefined,
+      });
+      setSendForm((current) => ({ ...current, to: '', subject: '', text: '', html: '' }));
+    } catch (requestError) {
+      setError(requestError instanceof SyntaxError ? 'Variables must be valid JSON' : requestError.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
   const verified = workspace?.verification_status === 'verified';
 
   return (
@@ -213,6 +238,22 @@ export default function WorkspaceDashboard() {
                 <button className="btn-primary justify-self-start" disabled={busy === 'template'} type="submit">{busy === 'template' ? 'Publishing...' : 'Publish template'}</button>
               </form>
               <div className="mt-6 grid gap-3 md:grid-cols-2">{templates.map((template) => <div className="rounded border border-gray-200 p-3" key={template.id}><div className="flex items-start justify-between gap-3"><div><p className="font-medium text-gray-900">{template.name}</p><p className="text-xs text-gray-500">{template.slug} from {template.sender_address}</p></div><button className="btn-ghost text-red-700" onClick={() => deleteTemplate(template.id)} type="button">Delete</button></div><p className="mt-2 text-sm text-gray-600">{template.subject}</p></div>)}</div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
+              <h2 className="text-xl font-semibold text-gray-950">Send email to a customer</h2>
+              <p className="mt-2 text-sm leading-6 text-gray-600">Send from a workspace address using a saved template or a custom message. Separate multiple recipients with commas.</p>
+              <form className="mt-5 grid gap-3 md:grid-cols-2" onSubmit={sendEmail}>
+                <input className="input md:col-span-2" required placeholder="customer@example.com" value={sendForm.to} onChange={(event) => setSendForm({ ...sendForm, to: event.target.value })} />
+                <select className="input" required value={sendForm.from} onChange={(event) => setSendForm({ ...sendForm, from: event.target.value })}><option value="">Select sender address</option>{addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}</select>
+                <select className="input" value={sendForm.template} onChange={(event) => setSendForm({ ...sendForm, template: event.target.value })}><option value="">Custom email</option>{templates.map((template) => <option key={template.id} value={template.slug}>{template.name}</option>)}</select>
+                {sendForm.template ? <textarea className="input min-h-28 font-mono text-xs md:col-span-2" placeholder={'Template variables JSON, e.g. {"code":"123456"}'} value={sendForm.vars} onChange={(event) => setSendForm({ ...sendForm, vars: event.target.value })} /> : <>
+                  <input className="input md:col-span-2" required placeholder="Subject" value={sendForm.subject} onChange={(event) => setSendForm({ ...sendForm, subject: event.target.value })} />
+                  <textarea className="input min-h-32" required placeholder="Plain text message" value={sendForm.text} onChange={(event) => setSendForm({ ...sendForm, text: event.target.value })} />
+                  <textarea className="input min-h-32 font-mono text-xs" placeholder="Optional HTML message" value={sendForm.html} onChange={(event) => setSendForm({ ...sendForm, html: event.target.value })} />
+                </>}
+                <button className="btn-primary justify-self-start" disabled={busy === 'send'} type="submit">{busy === 'send' ? 'Sending...' : 'Send email'}</button>
+              </form>
             </section>
           </div>}
         </>}

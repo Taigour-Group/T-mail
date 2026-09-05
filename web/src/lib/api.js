@@ -56,6 +56,7 @@ export const api = {
   workspaceTemplates: () => req('/api/workspace-templates'),
   createWorkspaceTemplate: (payload) => req('/api/workspace-templates', { method: 'POST', body: JSON.stringify(payload) }),
   deleteWorkspaceTemplate: (id) => req(`/api/workspace-templates/${id}`, { method: 'DELETE' }),
+  sendWorkspaceEmail: (payload) => req('/api/workspace-send', { method: 'POST', body: JSON.stringify(payload) }),
 
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {
