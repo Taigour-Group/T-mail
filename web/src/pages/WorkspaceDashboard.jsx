@@ -711,6 +711,132 @@ export default function WorkspaceDashboard() {
           )}
         </main>
       </div>
+
+      {/* Preview modal — full email rendered with demo values */}
+      {preview && (
+        <PreviewModal preview={preview} onClose={() => setPreview(null)} />
+      )}
+
+      {/* Create / clone template modal */}
+      {showCreate && (
+        <CreateTemplateModal
+          form={templateForm}
+          setForm={setTemplateForm}
+          addresses={addresses}
+          busy={busy === 'template'}
+          forked={Boolean(forkedFrom)}
+          onSubmit={saveTemplate}
+          onClose={() => { setShowCreate(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PreviewModal({ preview, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-semibold text-gray-950">{preview.name}</h2>
+              <CategoryTag category={preview.category} />
+            </div>
+            <p className="mt-1 truncate text-sm text-gray-500">Subject: {fillDemo(preview.subject)}</p>
+          </div>
+          <button className="btn-ghost shrink-0 px-2" onClick={onClose} aria-label="Close">
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto bg-gray-100 p-4">
+          {preview.html ? (
+            <iframe title="Email preview" sandbox="" srcDoc={fillDemo(preview.html)} className="h-[600px] w-full rounded-lg border border-gray-200 bg-white" />
+          ) : (
+            <p className="rounded-lg bg-white p-8 text-center text-sm text-gray-500">This template is plain-text only — no HTML preview.</p>
+          )}
+        </div>
+        <p className="border-t border-gray-100 px-5 py-3 text-xs text-gray-400">Preview uses sample data. {'{{placeholders}}'} are filled by your backend at send time.</p>
+      </div>
+    </div>
+  );
+}
+
+function CreateTemplateModal({ form, setForm, addresses, busy, forked, onSubmit, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 p-5">
+          <h2 className="text-lg font-semibold text-gray-950">{forked ? 'Reuse template' : 'Create template'}</h2>
+          <button className="btn-ghost px-2" onClick={onClose} aria-label="Close">
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="max-h-[75vh] overflow-y-auto p-5">
+          {forked && <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">Starting from an existing design. Pick a sender address and tweak anything you like before saving — it becomes your own template.</p>}
+          <p className="mb-4 text-xs text-gray-500">Placeholders such as {'{{code}}'}, {'{{name}}'}, {'{{app}}'}, {'{{link}}'} are supplied by your backend when sending.</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Template name</span>
+              <input className="input mt-1.5" required maxLength="80" placeholder="Order confirmation" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Slug</span>
+              <input className="input mt-1.5" required maxLength="64" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="order-confirmation" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Sender address</span>
+              <select className="input mt-1.5" required value={form.senderAddress} onChange={(e) => setForm({ ...form, senderAddress: e.target.value })}>
+                <option value="">Select sender address</option>
+                {addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Category</span>
+              <select className="input mt-1.5" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                {TEMPLATE_CATEGORIES.map((cat) => <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>)}
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700">Subject</span>
+              <input className="input mt-1.5" required maxLength="998" placeholder="Your order {{order_number}} is confirmed" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700">Plain text body</span>
+              <textarea className="input mt-1.5 min-h-28" required placeholder="Hi {{name}}, …" value={form.textBody} onChange={(e) => setForm({ ...form, textBody: e.target.value })} />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-sm font-medium text-gray-700">HTML body <span className="text-gray-400">(optional)</span></span>
+              <textarea className="input mt-1.5 min-h-40 font-mono text-xs" placeholder="<html>…</html>" value={form.htmlBody} onChange={(e) => setForm({ ...form, htmlBody: e.target.value })} />
+            </label>
+          </div>
+
+          {/* Visibility */}
+          <fieldset className="mt-5">
+            <legend className="text-sm font-medium text-gray-700">Visibility</legend>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              {[
+                { key: 'private', title: 'Private', desc: 'Only your workspace can see and use this template.' },
+                { key: 'public', title: 'Public', desc: 'Share it in the community gallery so any workspace can reuse it.' },
+              ].map((opt) => (
+                <label key={opt.key} className={`flex cursor-pointer gap-3 rounded-xl border p-4 ${form.visibility === opt.key ? 'border-accent bg-accent/5 ring-1 ring-accent' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <input type="radio" name="visibility" className="mt-0.5" checked={form.visibility === opt.key} onChange={() => setForm({ ...form, visibility: opt.key })} />
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-900">{opt.title}</span>
+                    <span className="mt-0.5 block text-xs text-gray-500">{opt.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-5">
+            <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Saving…' : form.visibility === 'public' ? 'Publish to community' : 'Save template'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
