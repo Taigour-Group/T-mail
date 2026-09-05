@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
-    "build": "npm run build --prefix web",
+    "build": "npm install --include=dev --workspaces && npm run build --prefix web",
     "start": "npm start --prefix server",
     "preview": "npm run preview --prefix web"
   },
