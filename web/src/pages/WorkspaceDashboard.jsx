@@ -1,13 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
-
-const PREBUILT_TEMPLATES = [
-  { name: 'Login verification', slug: 'login-verification', subject: 'Your {{code}} verification code', textBody: 'Your verification code is {{code}}. It expires in 10 minutes.', htmlBody: '<h1>Verify your sign-in</h1><p>Your verification code is <strong>{{code}}</strong>.</p>' },
-  { name: 'Welcome email', slug: 'welcome', subject: 'Welcome to {{app}}', textBody: 'Welcome to {{app}}, {{name}}! We are glad to have you here.', htmlBody: '<h1>Welcome to {{app}}</h1><p>We are glad to have you here, {{name}}.</p>' },
-  { name: 'Password reset', slug: 'password-reset', subject: 'Reset your {{app}} password', textBody: 'Reset your password here: {{link}}', htmlBody: '<h1>Password reset</h1><p><a href="{{link}}">Reset your password</a></p>' },
-];
+import { TEMPLATE_CATALOG, TEMPLATE_CATEGORIES, CATEGORY_LABELS, fillDemo } from '../lib/templateCatalog.js';
 
 // Sidebar sections — mirrors the Google Workspace admin console layout: a single
 // persistent nav rail, one working panel visible at a time.
@@ -65,6 +60,84 @@ function StatCard({ label, value, hint }) {
   );
 }
 
+const CATEGORY_COLORS = {
+  security: '#2563eb', onboarding: '#7c3aed', transactional: '#0891b2', ecommerce: '#059669',
+  billing: '#0d9488', marketing: '#db2777', engagement: '#ea580c', team: '#4f46e5',
+  event: '#c026d3', system: '#475569', custom: '#64748b',
+};
+
+// A live, scaled-down preview of the email HTML rendered in a sandboxed iframe so
+// its inline styles can't leak into (or break) the admin console.
+function EmailPreview({ html, className = '' }) {
+  if (!html) {
+    return (
+      <div className={`grid place-items-center bg-gray-50 text-gray-400 ${className}`}>
+        <span className="text-xs">Text-only template</span>
+      </div>
+    );
+  }
+  return (
+    <iframe
+      title="Email preview"
+      sandbox=""
+      scrolling="no"
+      className={className}
+      srcDoc={fillDemo(html)}
+      style={{ border: 0, background: '#fff', pointerEvents: 'none' }}
+    />
+  );
+}
+
+function CategoryTag({ category }) {
+  if (!category) return null;
+  const color = CATEGORY_COLORS[category] || CATEGORY_COLORS.custom;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium capitalize text-gray-600">
+      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+      {CATEGORY_LABELS[category] || category}
+    </span>
+  );
+}
+
+// Visual template card: framed thumbnail preview on top, meta + actions below.
+function TemplateCard({ title, meta, category, subject, html, visibility, onPreview, actions }) {
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md">
+      <button type="button" onClick={onPreview} className="relative block h-44 w-full overflow-hidden border-b border-gray-100 bg-gray-50 text-left">
+        {/* Scale a 600px email down into the card without a scrollbar. */}
+        <div className="pointer-events-none absolute left-0 top-0 origin-top-left" style={{ width: '600px', transform: 'scale(0.5)' }}>
+          <EmailPreview html={html} className="h-[352px] w-[600px]" />
+        </div>
+        <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">Preview</span>
+        {visibility === 'public' && (
+          <span className="absolute left-2 top-2 rounded-md bg-green-600 px-2 py-0.5 text-[11px] font-semibold text-white">Public</span>
+        )}
+      </button>
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate font-semibold text-gray-900">{title}</p>
+          <CategoryTag category={category} />
+        </div>
+        {subject && <p className="mt-1 truncate text-sm text-gray-600">{subject}</p>}
+        {meta && <p className="mt-0.5 truncate text-xs text-gray-400">{meta}</p>}
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3">
+          <button type="button" className="btn-ghost px-2 text-sm" onClick={onPreview}>Preview</button>
+          {actions}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyTemplates({ label, onBrowse }) {
+  return (
+    <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center">
+      <p className="text-sm text-gray-500">{label}</p>
+      {onBrowse && <button type="button" className="btn-outline mt-4" onClick={onBrowse}>Browse the starter gallery</button>}
+    </div>
+  );
+}
+
 function LockedNotice() {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -84,13 +157,20 @@ export default function WorkspaceDashboard() {
   const [addressForm, setAddressForm] = useState({ localPart: '', label: '' });
   const [tokens, setTokens] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [publicTemplates, setPublicTemplates] = useState([]);
   const [tokenName, setTokenName] = useState('My verification app');
   const [tokenExpiry, setTokenExpiry] = useState('90');
   const [newToken, setNewToken] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [sendNotice, setSendNotice] = useState('');
-  const [templateForm, setTemplateForm] = useState({ name: '', slug: '', senderAddress: '', subject: '', textBody: '', htmlBody: '' });
+  const [templateForm, setTemplateForm] = useState({ name: '', slug: '', senderAddress: '', subject: '', textBody: '', htmlBody: '', category: 'custom', visibility: 'private' });
+  // Templates UI: which tab (mine | gallery | public), category filter, preview + create modals.
+  const [templateTab, setTemplateTab] = useState('mine');
+  const [templateFilter, setTemplateFilter] = useState('all');
+  const [preview, setPreview] = useState(null);   // { name, subject, html, meta }
+  const [showCreate, setShowCreate] = useState(false);
+  const [forkedFrom, setForkedFrom] = useState(null); // id of the public template being cloned
   const [sendForm, setSendForm] = useState({ to: '', template: '', from: '', subject: '', text: '', html: '', vars: '{\n  "name": "Customer"\n}' });
 
   const load = async () => {
@@ -99,11 +179,14 @@ export default function WorkspaceDashboard() {
       setWorkspace(result.workspace);
       if (result.workspace) setWorkspaceForm({ workspaceName: result.workspace.name, website: result.workspace.website || '' });
       if (result.workspace?.verification_status === 'verified') {
-        const [addressResult, tokenResult, templateResult] = await Promise.all([api.workspaceAddresses(), api.serviceTokens(), api.workspaceTemplates()]);
+        const [addressResult, tokenResult, templateResult, publicResult] = await Promise.all([
+          api.workspaceAddresses(), api.serviceTokens(), api.workspaceTemplates(), api.publicTemplates().catch(() => ({ templates: [] })),
+        ]);
         setAddresses(addressResult.addresses);
         setDomain(addressResult.domain);
         setTokens(tokenResult.tokens);
         setTemplates(templateResult.templates);
+        setPublicTemplates(publicResult.templates || []);
         if (!templateForm.senderAddress && addressResult.addresses[0]) setTemplateForm((current) => ({ ...current, senderAddress: addressResult.addresses[0].address }));
       }
     } catch (requestError) {
@@ -176,13 +259,20 @@ export default function WorkspaceDashboard() {
     }
   };
 
+  const resetTemplateForm = () => {
+    setTemplateForm({ name: '', slug: '', senderAddress: addresses[0]?.address || '', subject: '', textBody: '', htmlBody: '', category: 'custom', visibility: 'private' });
+    setForkedFrom(null);
+  };
+
   const saveTemplate = async (event) => {
     event.preventDefault();
     setBusy('template');
     setError('');
     try {
-      await api.createWorkspaceTemplate(templateForm);
-      setTemplateForm({ name: '', slug: '', senderAddress: addresses[0]?.address || '', subject: '', textBody: '', htmlBody: '' });
+      await api.createWorkspaceTemplate({ ...templateForm, forkedFrom: forkedFrom || undefined });
+      resetTemplateForm();
+      setShowCreate(false);
+      setTemplateTab('mine');
       await load();
     } catch (requestError) {
       setError(requestError.message);
@@ -201,7 +291,38 @@ export default function WorkspaceDashboard() {
     }
   };
 
-  const usePreset = (preset) => setTemplateForm((current) => ({ ...current, ...preset }));
+  // Turn a slug into a unique one within this workspace (append -2, -3, … if taken).
+  const uniqueSlug = (base) => {
+    const taken = new Set(templates.map((t) => t.slug));
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base}-${n}`)) n += 1;
+    return `${base}-${n}`;
+  };
+
+  // Open the create modal pre-filled from a catalog starter or a public template.
+  const cloneIntoForm = ({ name, slug, subject, textBody, htmlBody, category, sourceId }) => {
+    setTemplateForm({
+      name,
+      slug: uniqueSlug(slug),
+      senderAddress: addresses[0]?.address || '',
+      subject,
+      textBody: textBody || '',
+      htmlBody: htmlBody || '',
+      category: category || 'custom',
+      visibility: 'private',
+    });
+    setForkedFrom(sourceId || null);
+    setShowCreate(true);
+  };
+
+  const useCatalogTemplate = (t) => cloneIntoForm({
+    name: t.name, slug: t.slug, subject: t.subject, textBody: t.text, htmlBody: t.html, category: t.category,
+  });
+
+  const usePublicTemplate = (t) => cloneIntoForm({
+    name: t.name, slug: t.slug, subject: t.subject, textBody: t.text_body, htmlBody: t.html_body, category: t.category, sourceId: t.id,
+  });
 
   const sendEmail = async (event) => {
     event.preventDefault();
@@ -231,6 +352,12 @@ export default function WorkspaceDashboard() {
 
   const verified = workspace?.verification_status === 'verified';
   const activeTokens = tokens.filter((token) => !token.revoked_at);
+
+  // Category filter applied to whichever template list the active tab shows.
+  const filterByCategory = (list, getCat) => (templateFilter === 'all' ? list : list.filter((t) => getCat(t) === templateFilter));
+  const galleryList = useMemo(() => filterByCategory(TEMPLATE_CATALOG, (t) => t.category), [templateFilter]);
+  const publicList = useMemo(() => filterByCategory(publicTemplates, (t) => t.category), [publicTemplates, templateFilter]);
+  const mineList = useMemo(() => filterByCategory(templates, (t) => t.category), [templates, templateFilter]);
 
   // ── No workspace yet: focused onboarding screen (no admin chrome) ────────────
   if (!workspace) {
@@ -433,48 +560,102 @@ export default function WorkspaceDashboard() {
 
           {section === 'templates' && (
             <div className="space-y-6">
-              <SectionHeader title="Templates" description="Reusable email designs with {{variable}} placeholders your backend fills in at send time.">
-                <div className="flex flex-wrap gap-2">
-                  {PREBUILT_TEMPLATES.map((preset) => (
-                    <button className="btn-outline text-xs" key={preset.slug} onClick={() => usePreset(preset)} type="button" disabled={!verified}>Use {preset.name}</button>
-                  ))}
-                </div>
+              <SectionHeader title="Templates" description="Ready-to-use email designs with {{variable}} placeholders your backend fills at send time. Browse the gallery, reuse community templates, or build your own.">
+                <button className="btn-primary" type="button" disabled={!verified} onClick={() => { resetTemplateForm(); setShowCreate(true); }}>Create template</button>
               </SectionHeader>
               {!verified ? <LockedNotice /> : (
                 <>
-                  <form className="rounded-xl border border-gray-200 bg-white p-6" onSubmit={saveTemplate}>
-                    <h2 className="text-base font-semibold text-gray-950">New template</h2>
-                    <p className="mt-1 text-xs text-gray-500">Placeholders such as {'{{code}}'}, {'{{name}}'}, {'{{app}}'}, {'{{link}}'} are supplied by your backend when sending.</p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <input className="input" required maxLength="80" placeholder="Template name" value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} />
-                      <input className="input" required maxLength="64" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="template-slug" value={templateForm.slug} onChange={(event) => setTemplateForm({ ...templateForm, slug: event.target.value })} />
-                      <select className="input" required value={templateForm.senderAddress} onChange={(event) => setTemplateForm({ ...templateForm, senderAddress: event.target.value })}>
-                        <option value="">Select sender address</option>
-                        {addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}
-                      </select>
-                      <input className="input" required maxLength="998" placeholder="Subject" value={templateForm.subject} onChange={(event) => setTemplateForm({ ...templateForm, subject: event.target.value })} />
-                      <textarea className="input min-h-32 md:col-span-2" required placeholder="Plain text body" value={templateForm.textBody} onChange={(event) => setTemplateForm({ ...templateForm, textBody: event.target.value })} />
-                      <textarea className="input min-h-32 font-mono text-xs md:col-span-2" placeholder="Optional HTML body" value={templateForm.htmlBody} onChange={(event) => setTemplateForm({ ...templateForm, htmlBody: event.target.value })} />
-                    </div>
-                    <button className="btn-primary mt-4" disabled={busy === 'template'} type="submit">{busy === 'template' ? 'Publishing…' : 'Publish template'}</button>
-                  </form>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {templates.length === 0 ? (
-                      <p className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500 md:col-span-2">No templates yet.</p>
-                    ) : templates.map((template) => (
-                      <div className="rounded-xl border border-gray-200 bg-white p-4" key={template.id}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-gray-900">{template.name}</p>
-                            <p className="truncate text-xs text-gray-500">{template.slug} · from {template.sender_address}</p>
-                          </div>
-                          <button className="btn-ghost shrink-0 text-red-700" onClick={() => deleteTemplate(template.id)} type="button">Delete</button>
-                        </div>
-                        <p className="mt-2 truncate text-sm text-gray-600">{template.subject}</p>
-                      </div>
+                  {/* Tabs */}
+                  <div className="flex flex-wrap items-center gap-2 border-b border-gray-200">
+                    {[
+                      { key: 'mine', label: `My templates (${templates.length})` },
+                      { key: 'gallery', label: `Starter gallery (${TEMPLATE_CATALOG.length})` },
+                      { key: 'public', label: `Community (${publicTemplates.length})` },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setTemplateTab(tab.key)}
+                        className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                          templateTab === tab.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
                     ))}
                   </div>
+
+                  {/* Category filter */}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setTemplateFilter('all')} className={`chip ${templateFilter === 'all' ? 'bg-accent text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>All</button>
+                    {TEMPLATE_CATEGORIES.map((cat) => (
+                      <button key={cat} type="button" onClick={() => setTemplateFilter(cat)} className={`chip ${templateFilter === cat ? 'bg-accent text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{CATEGORY_LABELS[cat]}</button>
+                    ))}
+                  </div>
+
+                  {/* My templates */}
+                  {templateTab === 'mine' && (
+                    mineList.length === 0 ? (
+                      <EmptyTemplates label={templates.length === 0 ? 'You haven’t created any templates yet.' : 'No templates in this category.'} onBrowse={() => setTemplateTab('gallery')} />
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {mineList.map((t) => (
+                          <TemplateCard
+                            key={t.id}
+                            title={t.name}
+                            meta={`${t.slug} · from ${t.sender_address}`}
+                            category={t.category}
+                            subject={t.subject}
+                            html={t.html_body}
+                            visibility={t.visibility}
+                            onPreview={() => setPreview({ name: t.name, subject: t.subject, html: t.html_body, category: t.category, visibility: t.visibility })}
+                            actions={<button className="btn-ghost text-red-700" type="button" onClick={() => deleteTemplate(t.id)}>Delete</button>}
+                          />
+                        ))}
+                      </div>
+                    )
+                  )}
+
+                  {/* Starter gallery (built-in catalog) */}
+                  {templateTab === 'gallery' && (
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {galleryList.map((t) => (
+                        <TemplateCard
+                          key={t.slug}
+                          title={t.name}
+                          meta={t.description}
+                          category={t.category}
+                          subject={t.subject}
+                          html={t.html}
+                          accent={t.accent}
+                          onPreview={() => setPreview({ name: t.name, subject: t.subject, html: t.html, category: t.category })}
+                          actions={<button className="btn-outline" type="button" onClick={() => useCatalogTemplate(t)}>Use template</button>}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Community / public templates */}
+                  {templateTab === 'public' && (
+                    publicList.length === 0 ? (
+                      <EmptyTemplates label={publicTemplates.length === 0 ? 'No community templates have been shared yet. Publish one of yours as public to start the gallery.' : 'No community templates in this category.'} />
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {publicList.map((t) => (
+                          <TemplateCard
+                            key={t.id}
+                            title={t.name}
+                            meta={`by ${t.published_by || 'a workspace'}${t.fork_count ? ` · used ${t.fork_count}×` : ''}`}
+                            category={t.category}
+                            subject={t.subject}
+                            html={t.html_body}
+                            onPreview={() => setPreview({ name: t.name, subject: t.subject, html: t.html_body, category: t.category })}
+                            actions={<button className="btn-outline" type="button" onClick={() => usePublicTemplate(t)}>Use template</button>}
+                          />
+                        ))}
+                      </div>
+                    )
+                  )}
                 </>
               )}
             </div>

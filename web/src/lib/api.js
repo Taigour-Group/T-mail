@@ -54,6 +54,7 @@ export const api = {
   createWorkspaceAddress: (localPart, label) => req('/api/workspace-addresses', { method: 'POST', body: JSON.stringify({ localPart, label }) }),
   deleteWorkspaceAddress: (id) => req(`/api/workspace-addresses/${id}`, { method: 'DELETE' }),
   workspaceTemplates: () => req('/api/workspace-templates'),
+  publicTemplates: () => req('/api/workspace-templates/public'),
   createWorkspaceTemplate: (payload) => req('/api/workspace-templates', { method: 'POST', body: JSON.stringify(payload) }),
   deleteWorkspaceTemplate: (id) => req(`/api/workspace-templates/${id}`, { method: 'DELETE' }),
   sendWorkspaceEmail: (payload) => req('/api/workspace-send', { method: 'POST', body: JSON.stringify(payload) }),

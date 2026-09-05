@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncH, requireUser } from '../middleware.js';
 import { getWorkspaceForMailbox } from '../lib/businessAccounts.js';
-import { createWorkspaceTemplate, deleteWorkspaceTemplate, listWorkspaceTemplates } from '../lib/workspaceTemplates.js';
+import { createWorkspaceTemplate, deleteWorkspaceTemplate, listWorkspaceTemplates, listPublicTemplates, incrementForkCount } from '../lib/workspaceTemplates.js';
 import { supabase } from '../supabase.js';
 
 export const workspaceTemplatesRouter = Router();
@@ -38,6 +38,14 @@ workspaceTemplatesRouter.get('/', asyncH(async (req, res) => {
   res.json({ templates: await listWorkspaceTemplates(workspace.id) });
 }));
 
+// Community gallery — public templates any workspace chose to share. Available to
+// every verified workspace; own templates are excluded (they already show under "Mine").
+workspaceTemplatesRouter.get('/public', asyncH(async (req, res) => {
+  const workspace = await verifiedWorkspace(req, res);
+  if (!workspace) return;
+  res.json({ templates: await listPublicTemplates({ excludeWorkspaceId: workspace.id }) });
+}));
+
 workspaceTemplatesRouter.post('/', asyncH(async (req, res) => {
   const workspace = await verifiedWorkspace(req, res);
   if (!workspace) return;
@@ -48,11 +56,28 @@ workspaceTemplatesRouter.post('/', asyncH(async (req, res) => {
     subject: z.string().trim().min(1).max(998),
     textBody: z.string().min(1).max(100000),
     htmlBody: z.string().max(200000).optional().or(z.literal('')),
+    category: z.string().trim().max(40).optional(),
+    visibility: z.enum(['private', 'public']).optional(),
+    forkedFrom: z.string().uuid().optional(),
   }).parse(req.body);
   if (!(await senderBelongsToWorkspace(workspace.id, input.senderAddress.toLowerCase()))) {
     return res.status(400).json({ error: 'Choose a custom address owned by this workspace' });
   }
-  res.status(201).json({ template: await createWorkspaceTemplate({ workspaceId: workspace.id, ...input }) });
+  const template = await createWorkspaceTemplate({
+    workspaceId: workspace.id,
+    name: input.name,
+    slug: input.slug,
+    senderAddress: input.senderAddress,
+    subject: input.subject,
+    textBody: input.textBody,
+    htmlBody: input.htmlBody,
+    category: input.category,
+    visibility: input.visibility,
+    publishedBy: req.user.address,
+  });
+  // If this was cloned from a shared template, credit the original.
+  if (input.forkedFrom) await incrementForkCount(input.forkedFrom);
+  res.status(201).json({ template });
 }));
 
 workspaceTemplatesRouter.delete('/:id', asyncH(async (req, res) => {
