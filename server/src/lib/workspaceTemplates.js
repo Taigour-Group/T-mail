@@ -1,6 +1,16 @@
 import { supabase } from '../supabase.js';
 import { normalizeAddress } from './addresses.js';
 
+function throwStorageError(error) {
+  if (error?.code === '42P01' || error?.code === '42703' || error?.message?.includes('workspace_templates')) {
+    const setupError = new Error('Workspace-template storage is not initialized. Apply server/db/schema.sql in the production Supabase project.');
+    setupError.status = 503;
+    setupError.publicMessage = setupError.message;
+    throw setupError;
+  }
+  throw error;
+}
+
 function replaceVariables(value, vars, escape) {
   return String(value || '').replace(/{{\s*([a-zA-Z0-9_.-]+)\s*}}/g, (_, key) => escape(vars[key] ?? ''));
 }
@@ -23,7 +33,7 @@ export async function listWorkspaceTemplates(workspaceId) {
   const { data, error } = await supabase.from('workspace_templates')
     .select('id, name, slug, sender_address, subject, text_body, html_body, created_at, updated_at')
     .eq('workspace_id', workspaceId).order('created_at', { ascending: false });
-  if (error) throw error;
+  if (error) throwStorageError(error);
   return data.map(shape);
 }
 
@@ -38,7 +48,7 @@ export async function createWorkspaceTemplate({ workspaceId, name, slug, senderA
       duplicate.status = 409;
       throw duplicate;
     }
-    throw error;
+    throwStorageError(error);
   }
   return shape(data);
 }
@@ -46,7 +56,7 @@ export async function createWorkspaceTemplate({ workspaceId, name, slug, senderA
 export async function deleteWorkspaceTemplate({ workspaceId, templateId }) {
   const { data, error } = await supabase.from('workspace_templates').delete()
     .eq('id', templateId).eq('workspace_id', workspaceId).select('id').maybeSingle();
-  if (error) throw error;
+  if (error) throwStorageError(error);
   return Boolean(data);
 }
 
@@ -54,7 +64,7 @@ export async function getWorkspaceTemplate(workspaceId, slug) {
   const { data, error } = await supabase.from('workspace_templates')
     .select('id, name, slug, sender_address, subject, text_body, html_body')
     .eq('workspace_id', workspaceId).eq('slug', slug).maybeSingle();
-  if (error) throw error;
+  if (error) throwStorageError(error);
   return data;
 }
 

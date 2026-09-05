@@ -9,7 +9,15 @@ export const workspaceTemplatesRouter = Router();
 workspaceTemplatesRouter.use(requireUser);
 
 async function verifiedWorkspace(req, res) {
-  const workspace = await getWorkspaceForMailbox(req.user.mailboxId);
+  let workspace;
+  try {
+    workspace = await getWorkspaceForMailbox(req.user.mailboxId);
+  } catch (error) {
+    if (error?.code === '42P01' || error?.code === '42703' || error?.message?.includes('workspace_members')) {
+      return res.status(503).json({ error: 'Workspace storage is not initialized. Apply server/db/schema.sql in the production Supabase project.' });
+    }
+    throw error;
+  }
   if (!workspace || workspace.verification_status !== 'verified') {
     res.status(403).json({ error: 'TGO team verification is required before managing templates', code: 'WORKSPACE_VERIFICATION_REQUIRED' });
     return null;
