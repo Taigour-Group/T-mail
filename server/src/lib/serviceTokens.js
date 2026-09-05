@@ -27,7 +27,11 @@ export async function createServiceToken({ mailboxId, name, expiresInDays }) {
       setupError.publicMessage = setupError.message;
       throw setupError;
     }
-    throw error;
+    const tokenError = new Error('Token creation failed. Check the production Supabase schema and Render server logs.');
+    tokenError.status = 503;
+    tokenError.publicMessage = tokenError.message;
+    tokenError.cause = error;
+    throw tokenError;
   }
   return { ...data, token };
 }
