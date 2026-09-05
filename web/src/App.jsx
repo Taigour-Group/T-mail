@@ -14,7 +14,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
-      <Route path="/guide" element={user ? <Guide /> : <Navigate to="/login" replace />} />
+      <Route path="/guide" element={<Guide />} />
       <Route path="/*" element={user ? <Mailbox /> : <Navigate to="/login" replace />} />
     </Routes>
   );
