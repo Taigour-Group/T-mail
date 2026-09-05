@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { env } from './env.js';
 import { readSession } from './lib/session.js';
+import { findActiveServiceToken } from './lib/serviceTokens.js';
 
 // Wrap async handlers so thrown/rejected errors reach the error middleware.
 export const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -28,14 +29,18 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ba, bb);
 }
 
-export function requireService(req, res, next) {
+export const requireService = asyncH(async (req, res, next) => {
   const header = req.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match || !safeEqual(match[1], env.serviceToken)) {
+  if (!match) return res.status(401).json({ error: 'Invalid service token' });
+  const token = match[1];
+  const validEnvToken = safeEqual(token, env.serviceToken);
+  const userToken = validEnvToken ? null : await findActiveServiceToken(token);
+  if (!validEnvToken && !userToken) {
     return res.status(401).json({ error: 'Invalid service token' });
   }
   next();
-}
+});
 
 // ── 404 + centralized error handler ───────────────────────────────────────────
 export function notFound(req, res) {

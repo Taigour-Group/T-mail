@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
@@ -93,6 +93,49 @@ function Step({ id, number, title, children }) {
 export default function Guide() {
   const { user, logout } = useAuth();
   const [demoState, setDemoState] = useState('idle');
+  const [tokens, setTokens] = useState([]);
+  const [tokenName, setTokenName] = useState('My verification app');
+  const [newToken, setNewToken] = useState(null);
+  const [tokenState, setTokenState] = useState('idle');
+  const [tokenError, setTokenError] = useState('');
+
+  const loadTokens = async () => {
+    try {
+      const result = await api.serviceTokens();
+      setTokens(result.tokens);
+    } catch (error) {
+      setTokenError(error.message);
+    }
+  };
+
+  useEffect(() => {
+    loadTokens();
+  }, []);
+
+  const createToken = async (event) => {
+    event.preventDefault();
+    setTokenState('creating');
+    setTokenError('');
+    try {
+      const token = await api.createServiceToken(tokenName);
+      setNewToken(token);
+      setTokenState('idle');
+      await loadTokens();
+    } catch (error) {
+      setTokenError(error.message);
+      setTokenState('idle');
+    }
+  };
+
+  const revokeToken = async (id) => {
+    setTokenError('');
+    try {
+      await api.revokeServiceToken(id);
+      await loadTokens();
+    } catch (error) {
+      setTokenError(error.message);
+    }
+  };
 
   const sendDemo = async () => {
     setDemoState('sending');
@@ -130,9 +173,41 @@ export default function Guide() {
         <div className="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1fr)_260px]">
           <div className="max-w-3xl space-y-10">
             <Step id="setup" number="1" title="Configure your service credentials">
-              <p>Generate a long, private service token and put it in the T-mail server environment:</p>
-              <CodeBlock code={'TMAIL_SERVICE_TOKEN=replace-with-a-long-random-secret'} />
-              <p>Keep this token on your server only. Never place it in browser JavaScript, mobile code, logs, or a public repository. Restart T-mail after changing the environment.</p>
+              <p>Create a token below, copy it once, and save it in your application backend as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">TMAIL_SERVICE_TOKEN</code>. This token can send verification and other system emails through T-mail.</p>
+              <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-4" onSubmit={createToken}>
+                <label className="block text-sm font-medium text-gray-900" htmlFor="token-name">Token name</label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input className="input flex-1" id="token-name" maxLength="80" onChange={(event) => setTokenName(event.target.value)} value={tokenName} />
+                  <button className="btn-primary shrink-0" disabled={tokenState === 'creating'} type="submit">
+                    {tokenState === 'creating' ? 'Generating...' : 'Generate token'}
+                  </button>
+                </div>
+              </form>
+              {newToken && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                  <p className="font-semibold">Copy this token now. It will not be shown again.</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <code className="min-w-0 flex-1 break-all rounded bg-white px-3 py-2 text-xs">{newToken.token}</code>
+                    <button className="btn-outline shrink-0" onClick={() => navigator.clipboard.writeText(newToken.token)} type="button">Copy token</button>
+                  </div>
+                </div>
+              )}
+              {tokens.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-gray-900">Your tokens</p>
+                  {tokens.map((token) => (
+                    <div className="flex items-center justify-between gap-3 rounded border border-gray-200 bg-white px-3 py-2 text-sm" key={token.id}>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-gray-900">{token.name}</p>
+                        <p className="text-xs text-gray-500">{token.token_prefix}... {token.revoked_at ? 'revoked' : 'active'}</p>
+                      </div>
+                      {!token.revoked_at && <button className="btn-ghost shrink-0 text-red-700" onClick={() => revokeToken(token.id)} type="button">Revoke</button>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tokenError && <p className="text-sm font-medium text-red-700">{tokenError}</p>}
+              <p>Keep this token on your backend only. Never place it in browser JavaScript, mobile code, logs, or a public repository.</p>
             </Step>
 
             <Step id="generate" number="2" title="Generate and store the OTP">

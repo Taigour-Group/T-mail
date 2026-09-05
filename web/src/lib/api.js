@@ -43,6 +43,11 @@ export const api = {
   search: (q) => req(`/api/search?q=${encodeURIComponent(q)}`),
   demoOtp: () => req('/api/demo/otp', { method: 'POST' }),
 
+  // service tokens
+  serviceTokens: () => req('/api/tokens'),
+  createServiceToken: (name) => req('/api/tokens', { method: 'POST', body: JSON.stringify({ name }) }),
+  revokeServiceToken: (id) => req(`/api/tokens/${id}`, { method: 'DELETE' }),
+
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {
     const fd = new FormData();
