@@ -17,6 +17,7 @@ export default function WorkspaceDashboard() {
   const [newToken, setNewToken] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [sendNotice, setSendNotice] = useState('');
   const [templateForm, setTemplateForm] = useState({ name: '', slug: '', senderAddress: '', subject: '', textBody: '', htmlBody: '' });
   const [sendForm, setSendForm] = useState({ to: '', template: '', from: '', subject: '', text: '', html: '', vars: '{\n  "name": "Customer"\n}' });
 
@@ -140,10 +141,11 @@ export default function WorkspaceDashboard() {
     event.preventDefault();
     setBusy('send');
     setError('');
+    setSendNotice('');
     try {
       let vars = {};
       if (sendForm.template && sendForm.vars.trim()) vars = JSON.parse(sendForm.vars);
-      await api.sendWorkspaceEmail({
+      const result = await api.sendWorkspaceEmail({
         to: sendForm.to.split(',').map((address) => address.trim()).filter(Boolean),
         template: sendForm.template || undefined,
         vars,
@@ -153,6 +155,7 @@ export default function WorkspaceDashboard() {
         html: sendForm.html || undefined,
       });
       setSendForm((current) => ({ ...current, to: '', subject: '', text: '', html: '' }));
+      setSendNotice(`Email delivered to ${result.delivered.join(', ')}`);
     } catch (requestError) {
       setError(requestError instanceof SyntaxError ? 'Variables must be valid JSON' : requestError.message);
     } finally {
@@ -243,6 +246,7 @@ export default function WorkspaceDashboard() {
             <section className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
               <h2 className="text-xl font-semibold text-gray-950">Send email to a customer</h2>
               <p className="mt-2 text-sm leading-6 text-gray-600">Send from a workspace address using a saved template or a custom message. Separate multiple recipients with commas.</p>
+              {sendNotice && <p className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">{sendNotice}</p>}
               <form className="mt-5 grid gap-3 md:grid-cols-2" onSubmit={sendEmail}>
                 <input className="input md:col-span-2" required placeholder="customer@example.com" value={sendForm.to} onChange={(event) => setSendForm({ ...sendForm, to: event.target.value })} />
                 <select className="input" required value={sendForm.from} onChange={(event) => setSendForm({ ...sendForm, from: event.target.value })}><option value="">Select sender address</option>{addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}</select>

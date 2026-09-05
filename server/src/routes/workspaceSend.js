@@ -5,6 +5,7 @@ import { getWorkspaceForMailbox } from '../lib/businessAccounts.js';
 import { findWorkspaceAddress } from '../lib/workspaceAddresses.js';
 import { getWorkspaceTemplate, renderWorkspaceTemplate } from '../lib/workspaceTemplates.js';
 import { deliverMessage } from '../lib/deliver.js';
+import { isInternal } from '../lib/addresses.js';
 
 export const workspaceSendRouter = Router();
 workspaceSendRouter.use(requireUser);
@@ -44,10 +45,20 @@ workspaceSendRouter.post('/', asyncH(async (req, res) => {
     return res.status(403).json({ error: 'The sender address is not owned by this workspace' });
   }
 
+  const recipientList = Array.isArray(body.to) ? body.to : [body.to];
+  const externalRecipients = recipientList.filter((address) => !isInternal(address));
+  if (externalRecipients.length > 0) {
+    return res.status(503).json({
+      error: 'External customer delivery is not configured yet. T-mail currently delivers only to @tgo.com addresses.',
+      code: 'EXTERNAL_DELIVERY_NOT_CONFIGURED',
+      recipients: externalRecipients,
+    });
+  }
+
   const result = await deliverMessage({
     senderMailboxId: sender.mailbox_id,
     fromAddress: sender.address,
-    to: Array.isArray(body.to) ? body.to : [body.to],
+    to: recipientList,
     subject: rendered.subject,
     bodyText: rendered.text,
     bodyHtml: rendered.html,
