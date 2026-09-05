@@ -19,6 +19,7 @@ export default function Mailbox() {
   const [selected, setSelected] = useState(null);
   const [compose, setCompose] = useState(null); // null | { initial }
   const [search, setSearch] = useState(null); // null | { q, results }
+  const [navOpen, setNavOpen] = useState(false); // mobile drawer
 
   const loadLabels = useCallback(async () => {
     try {
@@ -44,8 +45,8 @@ export default function Mailbox() {
   useEffect(() => { loadLabels(); }, [loadLabels]);
   useEffect(() => { if (!search) loadThreads(); }, [loadThreads, search]);
 
-  const onSelectFolder = (f) => { setLabelId(null); setFolder(f); setSelected(null); setSearch(null); };
-  const onSelectLabel = (id) => { setLabelId(id); setSelected(null); setSearch(null); };
+  const onSelectFolder = (f) => { setLabelId(null); setFolder(f); setSelected(null); setSearch(null); setNavOpen(false); };
+  const onSelectLabel = (id) => { setLabelId(id); setSelected(null); setSearch(null); setNavOpen(false); };
 
   const onCreateLabel = async () => {
     const name = window.prompt('New label name');
@@ -68,6 +69,7 @@ export default function Mailbox() {
     }
   }, []);
   const clearSearch = useCallback(() => setSearch(null), []);
+
   const openReply = (m) => {
     setCompose({
       initial: {
@@ -106,36 +108,66 @@ export default function Mailbox() {
         labels={labels}
         onSelectFolder={onSelectFolder}
         onSelectLabel={onSelectLabel}
-        onCompose={() => setCompose({ initial: {} })}
+        onCompose={() => { setCompose({ initial: {} }); setNavOpen(false); }}
         onCreateLabel={onCreateLabel}
         user={user}
         onLogout={logout}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="h-14 px-4 flex items-center gap-3 border-b border-gray-200 bg-white">
+        <div className="h-14 px-3 sm:px-4 flex items-center gap-2 sm:gap-3 border-b border-gray-200 bg-white">
+          <button
+            className="lg:hidden text-gray-500 hover:text-gray-800 p-1 -ml-1 shrink-0"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
           <SearchBar onSearch={doSearch} onClear={clearSearch} />
         </div>
 
         <div className="flex-1 flex min-h-0">
-          <ThreadList
-            title={title}
-            threads={searchAsThreads || threads}
-            loading={loading && !search}
-            selectedId={selected}
-            onOpen={setSelected}
-          />
-          {selected ? (
-            <ThreadView
-              threadId={selected}
-              onReply={openReply}
-              onChanged={loadThreads}
+          {/* Thread list: full-width on mobile; hidden on mobile when a thread is open */}
+          <div className={`w-full lg:w-96 lg:shrink-0 min-h-0 ${selected ? 'hidden lg:block' : 'block'}`}>
+            <ThreadList
+              title={title}
+              threads={searchAsThreads || threads}
+              loading={loading && !search}
+              selectedId={selected}
+              onOpen={setSelected}
             />
+          </div>
+
+          {/* Thread view: full-screen on mobile when open; placeholder on desktop when none */}
+          {selected ? (
+            <div className="w-full min-h-0 flex lg:flex-1">
+              <ThreadView
+                threadId={selected}
+                onReply={openReply}
+                onChanged={loadThreads}
+                onBack={() => setSelected(null)}
+              />
+            </div>
           ) : (
-            <div className="flex-1 grid place-items-center text-gray-400 text-sm">Select a conversation</div>
+            <div className="hidden lg:grid flex-1 place-items-center text-gray-400 text-sm">Select a conversation</div>
           )}
         </div>
       </div>
+
+      {/* Floating compose button on mobile */}
+      <button
+        className="lg:hidden fixed bottom-6 right-6 z-30 h-14 w-14 rounded-full bg-accent text-white shadow-lg grid place-items-center hover:bg-accent-hover"
+        onClick={() => setCompose({ initial: {} })}
+        aria-label="Compose"
+      >
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
 
       {compose && (
         <Compose

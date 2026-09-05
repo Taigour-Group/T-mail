@@ -10,7 +10,7 @@ function kb(bytes) {
   return `${Math.max(1, Math.round((bytes || 0) / 1024))} KB`;
 }
 
-export default function ThreadView({ threadId, refreshToken = 0, onReply, onChanged }) {
+export default function ThreadView({ threadId, refreshToken = 0, onReply, onChanged, onBack }) {
   const [thread, setThread] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -86,9 +86,20 @@ export default function ThreadView({ threadId, refreshToken = 0, onReply, onChan
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <div className="h-12 px-4 flex items-center justify-between border-b border-gray-200 bg-white">
-        <h2 className="font-semibold truncate">{thread.subject || '(no subject)'}</h2>
-        <button className="btn-outline" onClick={() => onReply(last)}>Reply</button>
+      <div className="h-12 px-3 sm:px-4 flex items-center gap-2 border-b border-gray-200 bg-white">
+        {onBack && (
+          <button
+            className="lg:hidden text-gray-500 hover:text-gray-800 p-1 -ml-1 shrink-0"
+            onClick={onBack}
+            aria-label="Back to conversations"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        )}
+        <h2 className="font-semibold truncate flex-1 min-w-0">{thread.subject || '(no subject)'}</h2>
+        <button className="btn-outline shrink-0" onClick={() => onReply(last)}>Reply</button>
       </div>
 
       <div className="overflow-y-auto flex-1 p-4 space-y-4">
