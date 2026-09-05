@@ -11,11 +11,19 @@ export default function WorkspaceDashboard() {
   const [domain, setDomain] = useState('tgo.com');
   const [addressForm, setAddressForm] = useState({ localPart: '', label: '' });
   const [tokens, setTokens] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [tokenName, setTokenName] = useState('My verification app');
   const [tokenExpiry, setTokenExpiry] = useState('90');
   const [newToken, setNewToken] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [templateForm, setTemplateForm] = useState({ name: '', slug: '', senderAddress: '', subject: '', textBody: '', htmlBody: '' });
+
+  const PREBUILT_TEMPLATES = [
+    { name: 'Login verification', slug: 'login-verification', subject: 'Your {{code}} verification code', textBody: 'Your verification code is {{code}}. It expires in 10 minutes.', htmlBody: '<h1>Verify your sign-in</h1><p>Your verification code is <strong>{{code}}</strong>.</p>' },
+    { name: 'Welcome email', slug: 'welcome', subject: 'Welcome to {{app}}', textBody: 'Welcome to {{app}}, {{name}}! We are glad to have you here.', htmlBody: '<h1>Welcome to {{app}}</h1><p>We are glad to have you here, {{name}}.</p>' },
+    { name: 'Password reset', slug: 'password-reset', subject: 'Reset your {{app}} password', textBody: 'Reset your password here: {{link}}', htmlBody: '<h1>Password reset</h1><p><a href="{{link}}">Reset your password</a></p>' },
+  ];
 
   const load = async () => {
     try {
@@ -23,10 +31,12 @@ export default function WorkspaceDashboard() {
       setWorkspace(result.workspace);
       if (result.workspace) setWorkspaceForm({ workspaceName: result.workspace.name, website: result.workspace.website || '' });
       if (result.workspace?.verification_status === 'verified') {
-        const [addressResult, tokenResult] = await Promise.all([api.workspaceAddresses(), api.serviceTokens()]);
+        const [addressResult, tokenResult, templateResult] = await Promise.all([api.workspaceAddresses(), api.serviceTokens(), api.workspaceTemplates()]);
         setAddresses(addressResult.addresses);
         setDomain(addressResult.domain);
         setTokens(tokenResult.tokens);
+        setTemplates(templateResult.templates);
+        if (!templateForm.senderAddress && addressResult.addresses[0]) setTemplateForm((current) => ({ ...current, senderAddress: addressResult.addresses[0].address }));
       }
     } catch (requestError) {
       setError(requestError.message);
@@ -98,6 +108,33 @@ export default function WorkspaceDashboard() {
     }
   };
 
+  const saveTemplate = async (event) => {
+    event.preventDefault();
+    setBusy('template');
+    setError('');
+    try {
+      await api.createWorkspaceTemplate(templateForm);
+      setTemplateForm({ name: '', slug: '', senderAddress: addresses[0]?.address || '', subject: '', textBody: '', htmlBody: '' });
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const deleteTemplate = async (id) => {
+    setError('');
+    try {
+      await api.deleteWorkspaceTemplate(id);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
+
+  const usePreset = (preset) => setTemplateForm((current) => ({ ...current, ...preset }));
+
   const verified = workspace?.verification_status === 'verified';
 
   return (
@@ -158,6 +195,24 @@ export default function WorkspaceDashboard() {
               <form className="mt-5 space-y-3" onSubmit={createToken}><input className="input" required maxLength="80" placeholder="Token name" value={tokenName} onChange={(event) => setTokenName(event.target.value)} /><div className="flex gap-2"><select className="input" value={tokenExpiry} onChange={(event) => setTokenExpiry(event.target.value)}><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option><option value="never">Never expires</option></select><button className="btn-primary" disabled={busy === 'token'} type="submit">Generate</button></div></form>
               {newToken && <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-semibold">Copy this token now. It will not be shown again.</p><code className="mt-2 block break-all rounded bg-white p-2 text-xs">{newToken.token}</code></div>}
               <div className="mt-5 space-y-2">{tokens.map((token) => <div className="flex items-center justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm" key={token.id}><div><p className="font-medium text-gray-900">{token.name}</p><p className="text-xs text-gray-500">{token.token_prefix}... {token.revoked_at ? 'revoked' : 'active'}</p></div>{!token.revoked_at && <button className="btn-ghost text-red-700" onClick={() => revokeToken(token.id)} type="button">Revoke</button>}</div>)}</div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h2 className="text-xl font-semibold text-gray-950">Email templates</h2><p className="mt-2 text-sm leading-6 text-gray-600">Start with a prebuilt template or publish your own text and HTML design.</p></div>
+                <div className="flex flex-wrap gap-2">{PREBUILT_TEMPLATES.map((preset) => <button className="btn-outline text-xs" key={preset.slug} onClick={() => usePreset(preset)} type="button">Use {preset.name}</button>)}</div>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">Use placeholders such as {'{{code}}'}, {'{{name}}'}, {'{{app}}'}, or {'{{link}}'}. Values are supplied by your backend when sending.</p>
+              <form className="mt-5 grid gap-3 md:grid-cols-2" onSubmit={saveTemplate}>
+                <input className="input" required maxLength="80" placeholder="Template name" value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} />
+                <input className="input" required maxLength="64" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="template-slug" value={templateForm.slug} onChange={(event) => setTemplateForm({ ...templateForm, slug: event.target.value })} />
+                <select className="input" required value={templateForm.senderAddress} onChange={(event) => setTemplateForm({ ...templateForm, senderAddress: event.target.value })}><option value="">Select sender address</option>{addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}</select>
+                <input className="input" required maxLength="998" placeholder="Subject" value={templateForm.subject} onChange={(event) => setTemplateForm({ ...templateForm, subject: event.target.value })} />
+                <textarea className="input min-h-32" required placeholder="Plain text body" value={templateForm.textBody} onChange={(event) => setTemplateForm({ ...templateForm, textBody: event.target.value })} />
+                <textarea className="input min-h-32 font-mono text-xs" placeholder="Optional HTML body" value={templateForm.htmlBody} onChange={(event) => setTemplateForm({ ...templateForm, htmlBody: event.target.value })} />
+                <button className="btn-primary justify-self-start" disabled={busy === 'template'} type="submit">{busy === 'template' ? 'Publishing...' : 'Publish template'}</button>
+              </form>
+              <div className="mt-6 grid gap-3 md:grid-cols-2">{templates.map((template) => <div className="rounded border border-gray-200 p-3" key={template.id}><div className="flex items-start justify-between gap-3"><div><p className="font-medium text-gray-900">{template.name}</p><p className="text-xs text-gray-500">{template.slug} from {template.sender_address}</p></div><button className="btn-ghost text-red-700" onClick={() => deleteTemplate(template.id)} type="button">Delete</button></div><p className="mt-2 text-sm text-gray-600">{template.subject}</p></div>)}</div>
             </section>
           </div>}
         </>}

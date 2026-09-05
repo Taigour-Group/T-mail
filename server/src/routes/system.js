@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { asyncH, requireService } from '../middleware.js';
 import { deliverMessage } from '../lib/deliver.js';
 import { renderTemplate, TEMPLATE_NAMES } from '../lib/templates.js';
+import { getWorkspaceTemplate, renderWorkspaceTemplate } from '../lib/workspaceTemplates.js';
+import { findWorkspaceAddress } from '../lib/workspaceAddresses.js';
 import { env } from '../env.js';
 
 export const systemRouter = Router();
@@ -21,7 +23,7 @@ const toField = z.union([z.string().email(), z.array(z.string().email()).min(1)]
 systemRouter.post('/send', asyncH(async (req, res) => {
   const body = z.object({
     to: toField,
-    template: z.enum(TEMPLATE_NAMES).optional(),
+    template: z.string().trim().max(64).optional(),
     vars: z.record(z.any()).optional(),
     subject: z.string().max(998).optional(),
     text: z.string().optional(),
@@ -37,7 +39,11 @@ systemRouter.post('/send', asyncH(async (req, res) => {
   let html;
 
   if (body.template) {
-    const rendered = renderTemplate(body.template, body.vars || {});
+    const custom = req.serviceAuth.workspaceId ? await getWorkspaceTemplate(req.serviceAuth.workspaceId, body.template) : null;
+    if (!custom && !TEMPLATE_NAMES.includes(body.template)) {
+      return res.status(400).json({ error: `Unknown template: ${body.template}` });
+    }
+    const rendered = custom ? renderWorkspaceTemplate(custom, body.vars || {}) : renderTemplate(body.template, body.vars || {});
     ({ from, subject, text, html } = rendered);
   } else {
     if (!body.subject || !body.text) {
@@ -46,13 +52,26 @@ systemRouter.post('/send', asyncH(async (req, res) => {
     subject = body.subject;
     text = body.text;
     html = body.html ?? null;
-    // Raw sender is restricted to the reserved system identities.
-    const allowed = [env.systemSenders.noReply, env.systemSenders.security];
-    from = allowed.includes((body.from || '').toLowerCase()) ? body.from.toLowerCase() : env.systemSenders.noReply;
+    const requestedFrom = (body.from || '').toLowerCase();
+    if (req.serviceAuth.workspaceId && requestedFrom) {
+      const workspaceAddress = await findWorkspaceAddress(requestedFrom);
+      if (!workspaceAddress || workspaceAddress.workspace_id !== req.serviceAuth.workspaceId) {
+        return res.status(403).json({ error: 'The sender address is not owned by this workspace' });
+      }
+      from = workspaceAddress.address;
+    } else {
+      const allowed = [env.systemSenders.noReply, env.systemSenders.security];
+      from = allowed.includes(requestedFrom) ? requestedFrom : env.systemSenders.noReply;
+    }
+  }
+
+  const senderAlias = req.serviceAuth.workspaceId ? await findWorkspaceAddress(from) : null;
+  if (req.serviceAuth.workspaceId && (!senderAlias || senderAlias.workspace_id !== req.serviceAuth.workspaceId)) {
+    return res.status(403).json({ error: 'The sender address is not owned by this workspace' });
   }
 
   const result = await deliverMessage({
-    senderMailboxId: null, // system sender has no mailbox → no SENT copy
+    senderMailboxId: senderAlias?.mailbox_id || null,
     fromAddress: from,
     to,
     subject,

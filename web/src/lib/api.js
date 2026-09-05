@@ -53,6 +53,9 @@ export const api = {
   workspaceAddresses: () => req('/api/workspace-addresses'),
   createWorkspaceAddress: (localPart, label) => req('/api/workspace-addresses', { method: 'POST', body: JSON.stringify({ localPart, label }) }),
   deleteWorkspaceAddress: (id) => req(`/api/workspace-addresses/${id}`, { method: 'DELETE' }),
+  workspaceTemplates: () => req('/api/workspace-templates'),
+  createWorkspaceTemplate: (payload) => req('/api/workspace-templates', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteWorkspaceTemplate: (id) => req(`/api/workspace-templates/${id}`, { method: 'DELETE' }),
 
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {

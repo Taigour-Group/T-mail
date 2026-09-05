@@ -43,7 +43,7 @@ export async function deleteWorkspaceAddress({ workspaceId, addressId }) {
 
 export async function findWorkspaceAddress(address) {
   const { data, error } = await supabase.from('workspace_addresses')
-    .select('mailbox_id').eq('address', normalizeAddress(address)).maybeSingle();
+    .select('workspace_id, mailbox_id, address').eq('address', normalizeAddress(address)).maybeSingle();
   if (error) throw error;
   return data;
 }
