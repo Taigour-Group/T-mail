@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { supabase } from '../supabase.js';
 import { env } from '../env.js';
 import { cleanList, isInternal, isValidAddress, normalizeAddress, normalizeSubject } from './addresses.js';
+import { findWorkspaceAddress } from './workspaceAddresses.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // deliver.js — THE delivery seam.
@@ -23,6 +24,8 @@ function rfcMessageId() {
 // shadow is reconciled to the real TGO ID `sub` on that user's first login.
 async function ensureMailboxByAddress(address) {
   const addr = normalizeAddress(address);
+  const alias = await findWorkspaceAddress(addr);
+  if (alias) return alias.mailbox_id;
   const { data: existing, error: selErr } = await supabase
     .from('mailboxes').select('id').eq('address', addr).maybeSingle();
   if (selErr) throw selErr;

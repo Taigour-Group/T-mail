@@ -102,6 +102,10 @@ export default function Guide() {
   const [businessAccount, setBusinessAccount] = useState(null);
   const [businessForm, setBusinessForm] = useState({ workspaceName: '', website: '' });
   const [businessState, setBusinessState] = useState('idle');
+  const [workspaceAddresses, setWorkspaceAddresses] = useState([]);
+  const [addressDomain, setAddressDomain] = useState('tgo.com');
+  const [addressForm, setAddressForm] = useState({ localPart: '', label: '' });
+  const [addressState, setAddressState] = useState('idle');
 
   const loadTokens = async () => {
     try {
@@ -121,9 +125,20 @@ export default function Guide() {
           workspaceName: result.workspace.name,
           website: result.workspace.website || '',
         });
+        if (result.workspace.verification_status === 'verified') await loadWorkspaceAddresses();
       }
     } catch (error) {
       setTokenError(error.message);
+    }
+  };
+
+  const loadWorkspaceAddresses = async () => {
+    try {
+      const result = await api.workspaceAddresses();
+      setWorkspaceAddresses(result.addresses);
+      setAddressDomain(result.domain);
+    } catch (error) {
+      if (error.status !== 403) setTokenError(error.message);
     }
   };
 
@@ -138,7 +153,8 @@ export default function Guide() {
     setTokenError('');
     try {
       const result = await api.requestBusinessAccount(businessForm);
-      setBusinessAccount(result.account);
+      setBusinessAccount(result.workspace);
+      await loadWorkspaceAddresses();
       setBusinessState('idle');
     } catch (error) {
       setTokenError(error.message);
@@ -166,6 +182,31 @@ export default function Guide() {
     try {
       await api.revokeServiceToken(id);
       await loadTokens();
+    } catch (error) {
+      setTokenError(error.message);
+    }
+  };
+
+  const createAddress = async (event) => {
+    event.preventDefault();
+    setAddressState('creating');
+    setTokenError('');
+    try {
+      await api.createWorkspaceAddress(addressForm.localPart, addressForm.label);
+      setAddressForm({ localPart: '', label: '' });
+      await loadWorkspaceAddresses();
+      setAddressState('idle');
+    } catch (error) {
+      setTokenError(error.message);
+      setAddressState('idle');
+    }
+  };
+
+  const deleteAddress = async (id) => {
+    setTokenError('');
+    try {
+      await api.deleteWorkspaceAddress(id);
+      await loadWorkspaceAddresses();
     } catch (error) {
       setTokenError(error.message);
     }
@@ -224,6 +265,24 @@ export default function Guide() {
                 )}
                 {businessAccount?.verification_status === 'verified' && <p className="mt-3 text-sm font-medium text-green-800">Workspace verified by the TGO team. Your team can create service tokens.</p>}
               </div>
+              {businessAccount?.verification_status === 'verified' && <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <p className="font-semibold text-gray-950">Custom workspace addresses</p>
+                <p className="mt-1 text-sm leading-6">Create addresses such as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">no-reply@{addressDomain}</code>. Incoming messages are delivered to your T-mail inbox.</p>
+                <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={createAddress}>
+                  <div className="flex min-w-0 flex-1 items-center">
+                    <input className="input min-w-0 flex-1 rounded-r-none" required maxLength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]" placeholder="no-reply" value={addressForm.localPart} onChange={(event) => setAddressForm({ ...addressForm, localPart: event.target.value })} />
+                    <span className="border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500">@{addressDomain}</span>
+                  </div>
+                  <input className="input sm:w-44" required maxLength="80" placeholder="Label" value={addressForm.label} onChange={(event) => setAddressForm({ ...addressForm, label: event.target.value })} />
+                  <button className="btn-primary shrink-0" disabled={addressState === 'creating'} type="submit">{addressState === 'creating' ? 'Creating...' : 'Create address'}</button>
+                </form>
+                {workspaceAddresses.length > 0 && <div className="mt-4 space-y-2">
+                  {workspaceAddresses.map((item) => <div className="flex items-center justify-between gap-3 rounded border border-gray-200 px-3 py-2 text-sm" key={item.id}>
+                    <div className="min-w-0"><p className="truncate font-medium text-gray-900">{item.address}</p><p className="text-xs text-gray-500">{item.label}</p></div>
+                    <button className="btn-ghost shrink-0 text-red-700" onClick={() => deleteAddress(item.id)} type="button">Delete</button>
+                  </div>)}
+                </div>}
+              </div>}
               <p>Create a token below, copy it once, and save it in your application backend as <code className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">TMAIL_SERVICE_TOKEN</code>. This token can send verification and other system emails through T-mail.</p>
               {businessAccount?.verification_status === 'verified' && <form className="space-y-3 rounded-lg border border-gray-200 bg-white p-4" onSubmit={createToken}>
                 <label className="block text-sm font-medium text-gray-900" htmlFor="token-name">Token name</label>

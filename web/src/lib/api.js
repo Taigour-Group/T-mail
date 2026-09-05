@@ -50,6 +50,9 @@ export const api = {
   revokeServiceToken: (id) => req(`/api/tokens/${id}`, { method: 'DELETE' }),
   businessAccount: () => req('/api/business-account'),
   requestBusinessAccount: (payload) => req('/api/business-account', { method: 'POST', body: JSON.stringify(payload) }),
+  workspaceAddresses: () => req('/api/workspace-addresses'),
+  createWorkspaceAddress: (localPart, label) => req('/api/workspace-addresses', { method: 'POST', body: JSON.stringify({ localPart, label }) }),
+  deleteWorkspaceAddress: (id) => req(`/api/workspace-addresses/${id}`, { method: 'DELETE' }),
 
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {
