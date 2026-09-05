@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -17,6 +19,8 @@ import { demoRouter } from './routes/demo.js';
 
 const app = express();
 if (env.isProd) app.set('trust proxy', 1);
+
+const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
 app.use(helmet());
 app.use(cors({ origin: env.webOrigin, credentials: true }));
@@ -40,6 +44,13 @@ app.use('/api/labels', labelsRouter);
 app.use('/api/attachments', attachmentsRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/demo', demoRouter);
+
+// In production Render runs one service, so serve the Vite app from Express.
+// API and auth routes above always take precedence over this SPA fallback.
+if (env.isProd) {
+  app.use(express.static(webDist));
+  app.get('*', (req, res) => res.sendFile(path.join(webDist, 'index.html')));
+}
 
 app.use(notFound);
 app.use(errorHandler);
