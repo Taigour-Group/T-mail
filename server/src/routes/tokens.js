@@ -13,7 +13,7 @@ tokensRouter.get('/', asyncH(async (req, res) => {
 }));
 
 tokensRouter.post('/', tokenCreateLimiter, asyncH(async (req, res) => {
-  const { name } = z.object({
+  const { name, expiresInDays } = z.object({
     name: z.string().trim().min(1).max(80).default('Application token'),
     expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.null()]).default(90),
   }).parse(req.body);
