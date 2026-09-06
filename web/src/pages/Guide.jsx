@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
+import { BRAND } from '../lib/brand.js';
 
 const sendOtpCode = `const response = await fetch('https://mail.example.com/api/system/send', {
   method: 'POST',
@@ -108,7 +109,10 @@ export default function Guide() {
     <div className="min-h-full bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-          <Link to="/" className="text-xl font-bold tracking-tight text-gray-950">tmail</Link>
+          <Link to="/" aria-label={BRAND.name} className="flex items-center gap-2">
+            <img src={BRAND.logoUrl} alt="" aria-hidden="true" className="h-8 w-auto max-w-[140px] object-contain object-left" />
+            <span className="text-xl font-bold tracking-tight text-gray-950">{BRAND.name}</span>
+          </Link>
           <div className="flex items-center gap-3 text-sm">
             <span className="hidden max-w-48 truncate text-gray-500 sm:inline">{user?.address}</span>
             <Link to="/" className="btn-outline">Back to inbox</Link>

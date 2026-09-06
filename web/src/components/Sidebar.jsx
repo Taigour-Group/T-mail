@@ -1,3 +1,5 @@
+import { BRAND } from '../lib/brand.js';
+
 const FOLDERS = [
   { key: 'INBOX', label: 'Inbox' },
   { key: 'STARRED', label: 'Starred' },
@@ -29,7 +31,10 @@ export default function Sidebar({
       >
         <div className="p-4">
           <div className="flex items-center justify-between mb-4 px-1">
-            <div className="text-xl font-bold tracking-tight">tmail</div>
+            <div className="flex items-center gap-2">
+              <img src={BRAND.logoUrl} alt="" aria-hidden="true" className="h-8 w-auto max-w-[140px] object-contain object-left" />
+              <span className="text-xl font-bold tracking-tight">{BRAND.name}</span>
+            </div>
             <button
               className="lg:hidden text-gray-400 hover:text-gray-700 p-1 -mr-1"
               onClick={onClose}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
+import { BRAND } from '../lib/brand.js';
 import { TEMPLATE_CATALOG, TEMPLATE_CATEGORIES, CATEGORY_LABELS, fillDemo } from '../lib/templateCatalog.js';
 
 // Sidebar sections — mirrors the Google Workspace admin console layout: a single
@@ -846,7 +847,10 @@ function ConsoleHeader({ user, logout }) {
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
         <div className="flex items-center gap-2.5">
-          <Link to="/" className="text-xl font-bold tracking-tight text-gray-950">tmail</Link>
+          <Link to="/" aria-label={BRAND.name} className="flex items-center gap-2">
+            <img src={BRAND.logoUrl} alt="" aria-hidden="true" className="h-8 w-auto max-w-[140px] object-contain object-left" />
+            <span className="text-xl font-bold tracking-tight text-gray-950">{BRAND.name}</span>
+          </Link>
           <span className="hidden rounded-md bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500 sm:inline">Admin</span>
         </div>
         <div className="flex items-center gap-3 text-sm">
