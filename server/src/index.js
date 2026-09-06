@@ -34,7 +34,13 @@ app.use((req, res, next) => {
 
 const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      'img-src': ["'self'", 'data:', 'https://res.cloudinary.com'],
+    },
+  },
+}));
 app.use(cors({ origin: env.webOrigin, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
