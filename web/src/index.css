@@ -7,6 +7,23 @@
   body { @apply bg-gray-50 text-gray-900 antialiased; }
 }
 
+@keyframes login-reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-reveal { animation: login-reveal 500ms ease-out both; }
+
+.login-grid {
+  background-image: linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom right, black, transparent 78%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-reveal { animation: none; }
+}
+
 /* Shared component classes — mirrors the TGO ID design language:
    monochrome surface + a single blue accent. */
 @layer components {
