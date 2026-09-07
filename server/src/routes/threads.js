@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../supabase.js';
 import { asyncH, requireUser } from '../middleware.js';
+import { getAddressFlags } from '../lib/workspaceAddresses.js';
 
 export const threadsRouter = Router();
 threadsRouter.use(requireUser);
@@ -9,6 +10,20 @@ threadsRouter.use(requireUser);
 function snippet(text, n = 140) {
   const s = String(text || '').replace(/\s+/g, ' ').trim();
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+async function purgeExpiredTrash(mailboxId) {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { error: datedError } = await supabase
+    .from('mailbox_messages').delete()
+    .eq('mailbox_id', mailboxId).eq('system_folder', 'TRASH').lt('trashed_at', cutoff);
+  if (datedError) throw datedError;
+
+  // Older installations may have trash rows created before trashed_at existed.
+  const { error: legacyError } = await supabase
+    .from('mailbox_messages').delete()
+    .eq('mailbox_id', mailboxId).eq('system_folder', 'TRASH').is('trashed_at', null).lt('created_at', cutoff);
+  if (legacyError) throw legacyError;
 }
 
 // GET /api/threads?folder=INBOX|SENT|DRAFT|TRASH|SPAM|STARRED&limit=50
@@ -19,15 +34,22 @@ threadsRouter.get('/', asyncH(async (req, res) => {
     limit: z.coerce.number().min(1).max(100).default(50),
   }).parse(req.query);
 
+  if (q.folder === 'TRASH') await purgeExpiredTrash(req.user.mailboxId);
+
   let query = supabase
     .from('mailbox_messages')
-    .select('id, is_read, is_starred, is_draft, system_folder, created_at, message:messages(id, thread_id, from_address, subject, body_text, created_at)')
+    .select('id, is_read, is_starred, is_draft, system_folder, created_at, message:messages(id, thread_id, from_address, subject, body_text, created_at, recipients(address))')
     .eq('mailbox_id', req.user.mailboxId)
     .order('created_at', { ascending: false })
     .limit(400);
 
-  if (q.folder === 'STARRED') query = query.eq('is_starred', true);
-  else query = query.eq('system_folder', q.folder);
+  if (q.folder === 'STARRED') {
+    // Starred is a cross-folder view but should not resurface trashed, spam, or
+    // still-draft items — only starred mail that lives in a normal folder.
+    query = query.eq('is_starred', true).in('system_folder', ['INBOX', 'SENT']);
+  } else {
+    query = query.eq('system_folder', q.folder);
+  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -55,6 +77,7 @@ threadsRouter.get('/', asyncH(async (req, res) => {
     };
     t.messageCount += 1;
     t.participants.add(m.from_address);
+    (m.recipients || []).forEach((recipient) => t.participants.add(recipient.address));
     if (!r.is_read) t.unread = true;
     if (r.is_starred) t.starred = true;
     if (m.created_at >= t.lastMessageAt) {
@@ -63,6 +86,24 @@ threadsRouter.get('/', asyncH(async (req, res) => {
       t.snippet = snippet(m.body_text);
     }
     threads.set(m.thread_id, t);
+  }
+
+  const threadIds = [...threads.keys()];
+  if (threadIds.length) {
+    const { data: latestMessages, error: latestError } = await supabase
+      .from('messages')
+      .select('thread_id, subject, body_text, created_at')
+      .in('thread_id', threadIds)
+      .order('created_at', { ascending: false });
+    if (latestError) throw latestError;
+
+    for (const message of latestMessages || []) {
+      const thread = threads.get(message.thread_id);
+      if (!thread || message.created_at < thread.lastMessageAt) continue;
+      thread.lastMessageAt = message.created_at;
+      thread.subject = message.subject;
+      thread.snippet = snippet(message.body_text);
+    }
   }
 
   const list = [...threads.values()]
@@ -92,10 +133,14 @@ threadsRouter.get('/:id', asyncH(async (req, res) => {
 
   const { data: messages, error: mErr } = await supabase
     .from('messages')
-    .select('id, from_address, subject, body_text, body_html, created_at, rfc_message_id, in_reply_to, recipients(address, kind), attachments(id, filename, mime_type, size_bytes)')
+    .select('id, from_address, subject, body_text, body_html, message_mode, created_at, rfc_message_id, in_reply_to, recipients(address, kind), attachments(id, filename, mime_type, size_bytes)')
     .eq('thread_id', threadId)
     .order('created_at', { ascending: true });
   if (mErr) throw mErr;
+
+  // Workspace-address flags for every sender in the thread. A normal user mailbox
+  // has no row here, so it defaults to replyable + unverified below.
+  const flags = await getAddressFlags((messages || []).map((m) => m.from_address));
 
   const shaped = (messages || []).map((m) => {
     const view = viewByMessage.get(m.id) || null;
@@ -103,12 +148,14 @@ threadsRouter.get('/:id', asyncH(async (req, res) => {
     const recipients = (m.recipients || []).filter(
       (r) => r.kind !== 'bcc' || m.from_address === viewer || r.address === viewer,
     );
+    const senderFlags = flags.get((m.from_address || '').toLowerCase());
     return {
       id: m.id,
       from: m.from_address,
       subject: m.subject,
       bodyText: m.body_text,
       bodyHtml: m.body_html,
+      mode: m.message_mode || 'mail',
       createdAt: m.created_at,
       rfcMessageId: m.rfc_message_id,
       inReplyTo: m.in_reply_to,
@@ -118,6 +165,9 @@ threadsRouter.get('/:id', asyncH(async (req, res) => {
       isRead: view?.is_read ?? true,
       isStarred: view?.is_starred ?? false,
       folder: view?.system_folder || null,
+      // A message is replyable unless its sender is a send-only workspace address.
+      replyable: senderFlags ? senderFlags.replyable : true,
+      senderVerified: senderFlags ? senderFlags.verified : false,
     };
   });
 

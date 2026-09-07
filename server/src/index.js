@@ -15,6 +15,7 @@ import { messagesRouter } from './routes/messages.js';
 import { labelsRouter } from './routes/labels.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { searchRouter } from './routes/search.js';
+import { friendsRouter } from './routes/friends.js';
 import { systemRouter } from './routes/system.js';
 import { demoRouter } from './routes/demo.js';
 import { tokensRouter } from './routes/tokens.js';
@@ -22,6 +23,9 @@ import { businessAccountsRouter } from './routes/businessAccounts.js';
 import { workspaceAddressesRouter } from './routes/workspaceAddresses.js';
 import { workspaceTemplatesRouter } from './routes/workspaceTemplates.js';
 import { workspaceSendRouter } from './routes/workspaceSend.js';
+import { workspaceSmtpRouter } from './routes/workspaceSmtp.js';
+import { smtpCredentialsRouter } from './routes/smtpCredentials.js';
+import { startSmtpSubmissionServer } from './smtpServer.js';
 
 const app = express();
 if (env.isProd) app.set('trust proxy', 1);
@@ -61,12 +65,15 @@ app.use('/api/messages', messagesRouter);
 app.use('/api/labels', labelsRouter);
 app.use('/api/attachments', attachmentsRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/friends', friendsRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/tokens', tokensRouter);
 app.use('/api/business-account', businessAccountsRouter);
 app.use('/api/workspace-addresses', workspaceAddressesRouter);
 app.use('/api/workspace-templates', workspaceTemplatesRouter);
 app.use('/api/workspace-send', workspaceSendRouter);
+app.use('/api/workspace-smtp', workspaceSmtpRouter);
+app.use('/api/smtp-credentials', smtpCredentialsRouter);
 
 // In production Render runs one service, so serve the Vite app from Express.
 // API and auth routes above always take precedence over this SPA fallback.
@@ -82,3 +89,7 @@ app.listen(env.port, () => {
   console.log(`tmail-server listening on http://localhost:${env.port}  (domain: @${env.emailDomain})`);
   console.log(`OIDC issuer: ${env.oidc.issuer}  |  callback: ${env.oidc.redirectUri}`);
 });
+
+// Optional SMTP submission server — lets mail clients send as @tgo.com addresses
+// using an app password. Off unless SMTP_SUBMISSION_ENABLED=true.
+startSmtpSubmissionServer();

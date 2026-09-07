@@ -28,13 +28,14 @@ workspaceAddressesRouter.get('/', asyncH(async (req, res) => {
 workspaceAddressesRouter.post('/', addressLimiter, asyncH(async (req, res) => {
   const workspace = await verifiedWorkspace(req, res);
   if (!workspace) return;
-  const { localPart, label } = z.object({
+  const { localPart, label, replyable } = z.object({
     localPart: z.string().trim().toLowerCase().regex(/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/),
     label: z.string().trim().min(1).max(80),
+    replyable: z.boolean().default(true),
   }).parse(req.body);
   res.status(201).json({ address: await createWorkspaceAddress({
     workspaceId: workspace.id, mailboxId: req.user.mailboxId,
-    address: `${localPart}@${env.emailDomain}`, label,
+    address: `${localPart}@${env.emailDomain}`, label, replyable,
   }) });
 }));
 

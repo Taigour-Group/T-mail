@@ -32,7 +32,9 @@ export const api = {
   send: (payload) => req('/api/messages', { method: 'POST', body: JSON.stringify(payload) }),
   saveDraft: (payload) => req('/api/messages/drafts', { method: 'POST', body: JSON.stringify(payload) }),
   patchMessage: (id, patch) => req(`/api/messages/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  editMessage: (id, bodyText) => req(`/api/messages/${id}`, { method: 'PATCH', body: JSON.stringify({ bodyText }) }),
   trashMessage: (id) => req(`/api/messages/${id}`, { method: 'DELETE' }),
+  permanentlyDeleteMessage: (id) => req(`/api/messages/${id}?permanent=true`, { method: 'DELETE' }),
 
   // labels
   labels: () => req('/api/labels'),
@@ -42,6 +44,7 @@ export const api = {
 
   // search
   search: (q) => req(`/api/search?q=${encodeURIComponent(q)}`),
+  findFriends: (q) => req(`/api/friends?q=${encodeURIComponent(q)}`),
   demoOtp: () => req('/api/demo/otp', { method: 'POST' }),
 
   // service tokens
@@ -51,13 +54,22 @@ export const api = {
   businessAccount: () => req('/api/business-account'),
   requestBusinessAccount: (payload) => req('/api/business-account', { method: 'POST', body: JSON.stringify(payload) }),
   workspaceAddresses: () => req('/api/workspace-addresses'),
-  createWorkspaceAddress: (localPart, label) => req('/api/workspace-addresses', { method: 'POST', body: JSON.stringify({ localPart, label }) }),
+  createWorkspaceAddress: (localPart, label, replyable = true) => req('/api/workspace-addresses', { method: 'POST', body: JSON.stringify({ localPart, label, replyable }) }),
   deleteWorkspaceAddress: (id) => req(`/api/workspace-addresses/${id}`, { method: 'DELETE' }),
   workspaceTemplates: () => req('/api/workspace-templates'),
   publicTemplates: () => req('/api/workspace-templates/public'),
   createWorkspaceTemplate: (payload) => req('/api/workspace-templates', { method: 'POST', body: JSON.stringify(payload) }),
   deleteWorkspaceTemplate: (id) => req(`/api/workspace-templates/${id}`, { method: 'DELETE' }),
   sendWorkspaceEmail: (payload) => req('/api/workspace-send', { method: 'POST', body: JSON.stringify(payload) }),
+  workspaceSmtp: () => req('/api/workspace-smtp'),
+  saveWorkspaceSmtp: (payload) => req('/api/workspace-smtp', { method: 'PUT', body: JSON.stringify(payload) }),
+  testWorkspaceSmtp: (payload) => req('/api/workspace-smtp/test', { method: 'POST', body: JSON.stringify(payload || {}) }),
+  deleteWorkspaceSmtp: () => req('/api/workspace-smtp', { method: 'DELETE' }),
+
+  // SMTP submission credentials (app passwords for our own SMTP server)
+  smtpCredentials: () => req('/api/smtp-credentials'),
+  createSmtpCredential: (address, label) => req('/api/smtp-credentials', { method: 'POST', body: JSON.stringify({ address, label }) }),
+  revokeSmtpCredential: (id) => req(`/api/smtp-credentials/${id}`, { method: 'DELETE' }),
 
   // attachments (multipart upload; JSON metadata back)
   uploadAttachment: async (file) => {

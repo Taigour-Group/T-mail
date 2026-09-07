@@ -26,6 +26,7 @@ messagesRouter.post('/', asyncH(async (req, res) => {
     subject: z.string().max(998).default(''),
     bodyText: z.string().default(''),
     bodyHtml: z.string().optional(),
+    mode: z.enum(['mail', 'chat']).default('mail'),
     inReplyTo: z.string().optional(),
     attachments: z.array(attachmentMeta).default([]),
   }).parse(req.body);
@@ -43,6 +44,7 @@ messagesRouter.post('/', asyncH(async (req, res) => {
     subject: body.subject,
     bodyText: body.bodyText,
     bodyHtml: body.bodyHtml ?? null,
+    messageMode: body.mode,
     inReplyTo: body.inReplyTo ?? null,
   });
 
@@ -111,12 +113,37 @@ messagesRouter.patch('/:id', asyncH(async (req, res) => {
     isRead: z.boolean().optional(),
     isStarred: z.boolean().optional(),
     folder: z.enum(['INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM']).optional(),
+    bodyText: z.string().optional(),
   }).parse(req.body);
+
+  if (patch.bodyText !== undefined) {
+    const { data: view, error: viewError } = await supabase
+      .from('mailbox_messages')
+      .select('id, message_id, message:messages!inner(from_address, message_mode)')
+      .eq('id', id)
+      .eq('mailbox_id', req.user.mailboxId)
+      .maybeSingle();
+    if (viewError) throw viewError;
+    if (!view) return res.status(404).json({ error: 'Message not found' });
+    if (view.message.from_address !== req.user.address) return res.status(403).json({ error: 'Only your messages can be edited' });
+    if (view.message.message_mode !== 'chat') return res.status(400).json({ error: 'Only chat messages can be edited' });
+
+    const { data, error } = await supabase
+      .from('messages').update({ body_text: patch.bodyText })
+      .eq('id', view.message_id)
+      .select('id, body_text')
+      .single();
+    if (error) throw error;
+    return res.json({ ok: true, message: data });
+  }
 
   const update = {};
   if (patch.isRead !== undefined) update.is_read = patch.isRead;
   if (patch.isStarred !== undefined) update.is_starred = patch.isStarred;
-  if (patch.folder !== undefined) update.system_folder = patch.folder;
+  if (patch.folder !== undefined) {
+    update.system_folder = patch.folder;
+    update.trashed_at = patch.folder === 'TRASH' ? new Date().toISOString() : null;
+  }
   if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
   const { data, error } = await supabase
@@ -129,14 +156,51 @@ messagesRouter.patch('/:id', asyncH(async (req, res) => {
   res.json({ ok: true, message: data });
 }));
 
-// DELETE /api/messages/:mailboxMessageId → move to TRASH (soft delete)
+// DELETE /api/messages/:mailboxMessageId → move one message to TRASH or delete it permanently
 messagesRouter.delete('/:id', asyncH(async (req, res) => {
   const id = z.string().uuid().parse(req.params.id);
-  const { data, error } = await supabase
-    .from('mailbox_messages').update({ system_folder: 'TRASH' })
-    .eq('id', id).eq('mailbox_id', req.user.mailboxId)
-    .select('id').maybeSingle();
-  if (error) throw error;
-  if (!data) return res.status(404).json({ error: 'Message not found' });
+  if (req.query.permanent === 'true') {
+    const { data: trashView, error: findError } = await supabase
+      .from('mailbox_messages').select('id, message_id, system_folder')
+      .eq('id', id).eq('mailbox_id', req.user.mailboxId).maybeSingle();
+    if (findError) throw findError;
+    if (!trashView) return res.status(404).json({ error: 'Message not found' });
+    if (trashView.system_folder !== 'TRASH') {
+      return res.status(400).json({ error: 'Only messages in Trash can be permanently deleted' });
+    }
+
+    // Remove only THIS mailbox's view of the message.
+    const { error: deleteViewError } = await supabase
+      .from('mailbox_messages').delete()
+      .eq('id', trashView.id).eq('mailbox_id', req.user.mailboxId);
+    if (deleteViewError) throw deleteViewError;
+
+    // Delete the shared physical message only when no mailbox still holds a view.
+    const { count: remaining, error: countError } = await supabase
+      .from('mailbox_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('message_id', trashView.message_id);
+    if (countError) throw countError;
+    if (!remaining) {
+      const { error: deleteError } = await supabase
+        .from('messages').delete().eq('id', trashView.message_id);
+      if (deleteError) throw deleteError;
+    }
+    return res.json({ ok: true, permanent: true });
+  }
+
+  const { data: view, error: viewError } = await supabase
+    .from('mailbox_messages').select('message_id')
+    .eq('id', id)
+    .eq('mailbox_id', req.user.mailboxId)
+    .maybeSingle();
+  if (viewError) throw viewError;
+  if (!view) return res.status(404).json({ error: 'Message not found' });
+
+  const { error: trashError } = await supabase
+    .from('mailbox_messages')
+    .update({ system_folder: 'TRASH', trashed_at: new Date().toISOString() })
+    .eq('id', id).eq('mailbox_id', req.user.mailboxId);
+  if (trashError) throw trashError;
   res.json({ ok: true });
 }));

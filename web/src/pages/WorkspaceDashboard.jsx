@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { api } from '../lib/api.js';
 import { BRAND } from '../lib/brand.js';
 import { TEMPLATE_CATALOG, TEMPLATE_CATEGORIES, CATEGORY_LABELS, fillDemo } from '../lib/templateCatalog.js';
+import VerifiedBadge from '../components/VerifiedBadge.jsx';
 
 // Sidebar sections — mirrors the Google Workspace admin console layout: a single
 // persistent nav rail, one working panel visible at a time.
@@ -12,6 +13,7 @@ const NAV = [
   { key: 'addresses', label: 'Email addresses', icon: 'at' },
   { key: 'tokens', label: 'Service tokens', icon: 'key' },
   { key: 'templates', label: 'Templates', icon: 'doc' },
+  { key: 'smtp', label: 'SMTP', icon: 'server' },
   { key: 'send', label: 'Send email', icon: 'send' },
 ];
 
@@ -22,6 +24,7 @@ function Icon({ name, className = 'h-5 w-5' }) {
     key: 'M21 2l-2 2m-7.6 7.6a5 5 0 11-2-2l7-7 3 3-1.5 1.5-2-2',
     doc: 'M14 3v4a1 1 0 001 1h4M5 3h9l6 6v11a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z',
     send: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
+    server: 'M4 4h16v6H4V4zm0 10h16v6H4v-6zM8 7h.01M8 17h.01',
   };
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -155,7 +158,7 @@ export default function WorkspaceDashboard() {
   const [workspaceForm, setWorkspaceForm] = useState({ workspaceName: '', website: '' });
   const [addresses, setAddresses] = useState([]);
   const [domain, setDomain] = useState('tgo.com');
-  const [addressForm, setAddressForm] = useState({ localPart: '', label: '' });
+  const [addressForm, setAddressForm] = useState({ localPart: '', label: '', replyable: true });
   const [tokens, setTokens] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [publicTemplates, setPublicTemplates] = useState([]);
@@ -173,6 +176,15 @@ export default function WorkspaceDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [forkedFrom, setForkedFrom] = useState(null); // id of the public template being cloned
   const [sendForm, setSendForm] = useState({ to: '', template: '', from: '', subject: '', text: '', html: '', vars: '{\n  "name": "Customer"\n}' });
+  // SMTP relay config. `configured` mirrors whether a row exists on the server.
+  const [smtp, setSmtp] = useState(null);
+  const [smtpForm, setSmtpForm] = useState({ host: '', port: '587', secure: false, username: '', password: '', fromName: '', fromAddress: '', enabled: false });
+  const [smtpTest, setSmtpTest] = useState(null); // { ok, message }
+  // SMTP submission credentials (app passwords for our own SMTP server).
+  const [smtpServer, setSmtpServer] = useState(null); // { port, enabled, security }
+  const [smtpCreds, setSmtpCreds] = useState([]);
+  const [credForm, setCredForm] = useState({ address: '', label: '' });
+  const [newCred, setNewCred] = useState(null); // { username, secret } shown once
 
   const load = async () => {
     try {
@@ -180,14 +192,32 @@ export default function WorkspaceDashboard() {
       setWorkspace(result.workspace);
       if (result.workspace) setWorkspaceForm({ workspaceName: result.workspace.name, website: result.workspace.website || '' });
       if (result.workspace?.verification_status === 'verified') {
-        const [addressResult, tokenResult, templateResult, publicResult] = await Promise.all([
-          api.workspaceAddresses(), api.serviceTokens(), api.workspaceTemplates(), api.publicTemplates().catch(() => ({ templates: [] })),
+        const [addressResult, tokenResult, templateResult, publicResult, smtpResult, credResult] = await Promise.all([
+          api.workspaceAddresses(), api.serviceTokens(), api.workspaceTemplates(),
+          api.publicTemplates().catch(() => ({ templates: [] })),
+          api.workspaceSmtp().catch(() => ({ smtp: null })),
+          api.smtpCredentials().catch(() => ({ server: null, credentials: [] })),
         ]);
         setAddresses(addressResult.addresses);
         setDomain(addressResult.domain);
         setTokens(tokenResult.tokens);
         setTemplates(templateResult.templates);
         setPublicTemplates(publicResult.templates || []);
+        setSmtp(smtpResult.smtp || null);
+        setSmtpServer(credResult.server || null);
+        setSmtpCreds(credResult.credentials || []);
+        if (smtpResult.smtp) {
+          setSmtpForm({
+            host: smtpResult.smtp.host || '',
+            port: String(smtpResult.smtp.port || '587'),
+            secure: Boolean(smtpResult.smtp.secure),
+            username: smtpResult.smtp.username || '',
+            password: '',
+            fromName: smtpResult.smtp.fromName || '',
+            fromAddress: smtpResult.smtp.fromAddress || '',
+            enabled: Boolean(smtpResult.smtp.enabled),
+          });
+        }
         if (!templateForm.senderAddress && addressResult.addresses[0]) setTemplateForm((current) => ({ ...current, senderAddress: addressResult.addresses[0].address }));
       }
     } catch (requestError) {
@@ -216,8 +246,8 @@ export default function WorkspaceDashboard() {
     setBusy('address');
     setError('');
     try {
-      await api.createWorkspaceAddress(addressForm.localPart, addressForm.label);
-      setAddressForm({ localPart: '', label: '' });
+      await api.createWorkspaceAddress(addressForm.localPart, addressForm.label, addressForm.replyable);
+      setAddressForm({ localPart: '', label: '', replyable: true });
       await load();
     } catch (requestError) {
       setError(requestError.message);
@@ -348,6 +378,92 @@ export default function WorkspaceDashboard() {
       setError(requestError instanceof SyntaxError ? 'Variables must be valid JSON' : requestError.message);
     } finally {
       setBusy('');
+    }
+  };
+
+  const smtpPayload = () => ({
+    host: smtpForm.host.trim(),
+    port: Number(smtpForm.port),
+    secure: smtpForm.secure,
+    username: smtpForm.username.trim(),
+    password: smtpForm.password ? smtpForm.password : undefined,
+    fromName: smtpForm.fromName.trim() || undefined,
+    fromAddress: smtpForm.fromAddress.trim() || undefined,
+    enabled: smtpForm.enabled,
+  });
+
+  const saveSmtp = async (event) => {
+    event.preventDefault();
+    setBusy('smtp');
+    setError('');
+    setSmtpTest(null);
+    try {
+      const result = await api.saveWorkspaceSmtp(smtpPayload());
+      setSmtp(result.smtp);
+      setSmtpForm((current) => ({ ...current, password: '' })); // never keep the raw secret around
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const testSmtp = async () => {
+    setBusy('smtp-test');
+    setError('');
+    setSmtpTest(null);
+    try {
+      // Send whatever is in the form; the server falls back to the stored password if blank.
+      const result = await api.testWorkspaceSmtp(smtpPayload());
+      setSmtpTest({ ok: true, message: result.message || 'Connection successful' });
+    } catch (requestError) {
+      setSmtpTest({ ok: false, message: requestError.message });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const removeSmtp = async () => {
+    if (!window.confirm('Remove SMTP configuration? External delivery will stop until you reconfigure it.')) return;
+    setBusy('smtp');
+    setError('');
+    try {
+      await api.deleteWorkspaceSmtp();
+      setSmtp(null);
+      setSmtpForm({ host: '', port: '587', secure: false, username: '', password: '', fromName: '', fromAddress: '', enabled: false });
+      setSmtpTest(null);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const createCred = async (event) => {
+    event.preventDefault();
+    setBusy('cred');
+    setError('');
+    setNewCred(null);
+    try {
+      const result = await api.createSmtpCredential(credForm.address, credForm.label.trim() || undefined);
+      setNewCred(result.credential); // { username, secret, ... } — shown once
+      setSmtpCreds((current) => [{ ...result.credential, secret: undefined }, ...current]);
+      setCredForm({ address: '', label: '' });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const revokeCred = async (id) => {
+    if (!window.confirm('Revoke this SMTP credential? Any client using it will stop sending immediately.')) return;
+    setError('');
+    try {
+      await api.revokeSmtpCredential(id);
+      setSmtpCreds((current) => current.map((c) => (c.id === id ? { ...c, revoked_at: new Date().toISOString() } : c)));
+    } catch (requestError) {
+      setError(requestError.message);
     }
   };
 
@@ -486,6 +602,20 @@ export default function WorkspaceDashboard() {
                       </label>
                       <button className="btn-primary" disabled={busy === 'address'} type="submit">{busy === 'address' ? 'Adding…' : 'Add'}</button>
                     </div>
+                    <label className="mt-4 flex items-start gap-2.5 rounded-lg bg-gray-50 p-3">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-accent"
+                        checked={addressForm.replyable}
+                        onChange={(event) => setAddressForm({ ...addressForm, replyable: event.target.checked })}
+                      />
+                      <span className="text-sm text-gray-700">
+                        <span className="font-medium">Accepts replies</span>
+                        <span className="block text-xs text-gray-500">
+                          Leave unchecked for a send-only address like <code>no-reply@{domain}</code>. Recipients won’t see a reply box on messages from a send-only address.
+                        </span>
+                      </span>
+                    </label>
                   </form>
 
                   <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -494,8 +624,16 @@ export default function WorkspaceDashboard() {
                     ) : addresses.map((item) => (
                       <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3.5 last:border-0" key={item.id}>
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-gray-900">{item.address}</p>
-                          <p className="truncate text-xs text-gray-500">{item.label}</p>
+                          <p className="flex items-center gap-1.5 truncate font-medium text-gray-900">
+                            <span className="truncate">{item.address}</span>
+                            {item.verified && <VerifiedBadge className="h-4 w-4" />}
+                          </p>
+                          <p className="flex items-center gap-2 truncate text-xs text-gray-500">
+                            <span className="truncate">{item.label}</span>
+                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${item.replyable ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {item.replyable ? 'Replies on' : 'Send-only'}
+                            </span>
+                          </p>
                         </div>
                         <button className="btn-ghost shrink-0 text-red-700" onClick={() => deleteAddress(item.id)} type="button">Delete</button>
                       </div>
@@ -705,6 +843,167 @@ export default function WorkspaceDashboard() {
                       )}
                     </div>
                     <button className="btn-primary mt-4" disabled={busy === 'send'} type="submit">{busy === 'send' ? 'Sending…' : 'Send email'}</button>
+                  </form>
+                </>
+              )}
+            </div>
+          )}
+
+          {section === 'smtp' && (
+            <div className="space-y-6">
+              <SectionHeader title="SMTP access" description="Send mail through TGO's SMTP server using one of your workspace addresses. Point any mail client or app at the settings below with a credential you generate here." />
+              {!verified ? <LockedNotice /> : (
+                <>
+                  {/* ── Connection settings ─────────────────────────────── */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 className="text-sm font-semibold text-gray-900">Connection settings</h3>
+                    <p className="mt-1 text-sm text-gray-500">Use these in your mail client. The username is your workspace address; the password is a credential you generate below.</p>
+                    <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <dt className="text-xs font-medium text-gray-500">SMTP host</dt>
+                        <dd className="mt-0.5 font-mono text-sm text-gray-900">smtp.{domain || 'tgo.com'}</dd>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <dt className="text-xs font-medium text-gray-500">Port</dt>
+                        <dd className="mt-0.5 font-mono text-sm text-gray-900">{smtpServer?.port || 2525} · {smtpServer?.security || 'STARTTLS'}</dd>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <dt className="text-xs font-medium text-gray-500">Username</dt>
+                        <dd className="mt-0.5 font-mono text-sm text-gray-900">your workspace address</dd>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <dt className="text-xs font-medium text-gray-500">Password</dt>
+                        <dd className="mt-0.5 font-mono text-sm text-gray-900">a generated credential</dd>
+                      </div>
+                    </dl>
+                    {smtpServer && !smtpServer.enabled && (
+                      <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">The SMTP submission server is not enabled on this deployment yet. Credentials can be created, but sending won't work until an admin enables it.</p>
+                    )}
+                    <p className="mt-4 text-xs text-gray-400">Internal @tgo.com mail delivers instantly. External recipients require an outbound relay (configured below), otherwise they're rejected.</p>
+                  </div>
+
+                  {/* ── Credentials ─────────────────────────────────────── */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 className="text-sm font-semibold text-gray-900">App passwords</h3>
+                    <p className="mt-1 text-sm text-gray-500">Each credential is tied to one workspace address and shown only once. Treat it like a password.</p>
+
+                    {newCred && (
+                      <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                        <p className="text-sm font-medium text-green-900">Credential created — copy it now, it won't be shown again.</p>
+                        <div className="mt-3 space-y-2 font-mono text-xs">
+                          <div><span className="text-green-700">Username: </span><span className="select-all break-all text-green-950">{newCred.username}</span></div>
+                          <div><span className="text-green-700">Password: </span><span className="select-all break-all text-green-950">{newCred.secret}</span></div>
+                        </div>
+                        <button className="btn-ghost mt-3 text-xs" type="button" onClick={() => setNewCred(null)}>Done</button>
+                      </div>
+                    )}
+
+                    <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={createCred}>
+                      <label className="block flex-1 min-w-[180px]">
+                        <span className="text-sm font-medium text-gray-700">Address</span>
+                        <select className="input mt-1.5" required value={credForm.address} onChange={(event) => setCredForm({ ...credForm, address: event.target.value })}>
+                          <option value="">Select workspace address</option>
+                          {addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}
+                        </select>
+                      </label>
+                      <label className="block flex-1 min-w-[180px]">
+                        <span className="text-sm font-medium text-gray-700">Label <span className="text-gray-400">(optional)</span></span>
+                        <input className="input mt-1.5" maxLength="80" placeholder="Marketing app" value={credForm.label} onChange={(event) => setCredForm({ ...credForm, label: event.target.value })} />
+                      </label>
+                      <button className="btn-primary" disabled={busy === 'cred'} type="submit">{busy === 'cred' ? 'Generating…' : 'Generate credential'}</button>
+                    </form>
+
+                    {smtpCreds.length > 0 && (
+                      <ul className="mt-5 divide-y divide-gray-100">
+                        {smtpCreds.map((cred) => (
+                          <li key={cred.id} className="flex items-center justify-between gap-4 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-gray-900">{cred.address}</p>
+                              <p className="truncate text-xs text-gray-500">
+                                {cred.label} · <span className="font-mono">{cred.secret_prefix}…</span>
+                                {cred.last_used_at ? ` · last used ${new Date(cred.last_used_at).toLocaleDateString()}` : ' · never used'}
+                              </p>
+                            </div>
+                            {cred.revoked_at ? (
+                              <span className="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">Revoked</span>
+                            ) : (
+                              <button className="btn-ghost shrink-0 text-xs text-red-600" type="button" onClick={() => revokeCred(cred.id)}>Revoke</button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* ── Outbound relay (external delivery) ───────────────── */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-base font-semibold text-gray-900">Outbound relay</h3>
+                    <p className="mt-1 text-sm text-gray-500">Optional. Lets mail sent through TGO reach external (non-@tgo.com) inboxes via your own provider. Without it, external recipients are rejected — no surprise third-party charges.</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${smtp?.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${smtp?.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      {smtp?.enabled ? 'External delivery enabled' : smtp ? 'Configured — disabled' : 'Not configured'}
+                    </span>
+                    {smtp?.lastTestedAt && (
+                      <span className="text-xs text-gray-500">
+                        Last test: {smtp.lastTestOk ? 'passed' : 'failed'} · {new Date(smtp.lastTestedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+
+                  <form className="space-y-4 rounded-xl border border-gray-200 bg-white p-6" onSubmit={saveSmtp}>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block md:col-span-2">
+                        <span className="text-sm font-medium text-gray-700">SMTP Host</span>
+                        <input className="input mt-1.5" required placeholder="smtp.gmail.com" value={smtpForm.host} onChange={(event) => setSmtpForm({ ...smtpForm, host: event.target.value })} />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">Port</span>
+                        <input className="input mt-1.5" required type="number" min="1" max="65535" placeholder="587" value={smtpForm.port} onChange={(event) => setSmtpForm({ ...smtpForm, port: event.target.value })} />
+                      </label>
+                      <label className="flex items-center gap-2 self-end pb-2">
+                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={smtpForm.secure} onChange={(event) => setSmtpForm({ ...smtpForm, secure: event.target.checked })} />
+                        <span className="text-sm text-gray-700">Use TLS (SSL) — port 465</span>
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">Username / Email</span>
+                        <input className="input mt-1.5" required placeholder="you@example.com" autoComplete="off" value={smtpForm.username} onChange={(event) => setSmtpForm({ ...smtpForm, username: event.target.value })} />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">Password / App password</span>
+                        <input className="input mt-1.5" type="password" autoComplete="new-password" placeholder={smtp?.hasPassword ? '•••••••• (unchanged)' : 'App password'} value={smtpForm.password} onChange={(event) => setSmtpForm({ ...smtpForm, password: event.target.value })} />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">From Name <span className="text-gray-400">(display name)</span></span>
+                        <input className="input mt-1.5" placeholder="Certificate Team" value={smtpForm.fromName} onChange={(event) => setSmtpForm({ ...smtpForm, fromName: event.target.value })} />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-medium text-gray-700">From Address</span>
+                        <select className="input mt-1.5" value={smtpForm.fromAddress} onChange={(event) => setSmtpForm({ ...smtpForm, fromAddress: event.target.value })}>
+                          <option value="">Use sender address</option>
+                          {addresses.map((item) => <option key={item.id} value={item.address}>{item.address}</option>)}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 md:col-span-2">
+                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={smtpForm.enabled} onChange={(event) => setSmtpForm({ ...smtpForm, enabled: event.target.checked })} />
+                        <span className="text-sm text-gray-700">Enable external delivery through this relay</span>
+                      </label>
+                    </div>
+
+                    {smtpTest && (
+                      <p className={`rounded-lg border p-3 text-sm font-medium ${smtpTest.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                        {smtpTest.ok ? '✓ ' : '✕ '}{smtpTest.message}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button className="btn-primary" disabled={busy === 'smtp'} type="submit">{busy === 'smtp' ? 'Saving…' : 'Save Settings'}</button>
+                      <button className="btn-outline" disabled={busy === 'smtp-test'} type="button" onClick={testSmtp}>{busy === 'smtp-test' ? 'Testing…' : 'Test Connection'}</button>
+                      {smtp && <button className="btn-ghost text-red-600" disabled={busy === 'smtp'} type="button" onClick={removeSmtp}>Remove</button>}
+                    </div>
+                    <p className="text-xs text-gray-400">Test Connection verifies your credentials with the provider without sending any mail. Your password is encrypted at rest and never returned to the browser.</p>
                   </form>
                 </>
               )}

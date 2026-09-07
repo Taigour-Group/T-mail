@@ -16,6 +16,19 @@ const schema = z.object({
 
   COOKIE_SECRET: z.string().min(16, 'COOKIE_SECRET must be at least 16 chars'),
 
+  // Encrypts workspace SMTP passwords at rest. Optional: falls back to a key
+  // derived from COOKIE_SECRET when unset, so existing deployments keep working.
+  SMTP_SECRET: z.string().min(16, 'SMTP_SECRET must be at least 16 chars').optional(),
+
+  // Our inbound SMTP submission server (clients connect here to send as their
+  // @tgo.com address). Disabled unless SMTP_SUBMISSION_ENABLED is 'true'.
+  SMTP_SUBMISSION_ENABLED: z.enum(['true', 'false']).default('false'),
+  SMTP_SUBMISSION_PORT: z.coerce.number().default(2525),
+  // PEM strings for STARTTLS. Without them the server still runs but advertises
+  // no TLS — fine for localhost testing, NOT for production credentials.
+  SMTP_SUBMISSION_TLS_KEY: z.string().optional(),
+  SMTP_SUBMISSION_TLS_CERT: z.string().optional(),
+
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
@@ -52,6 +65,14 @@ export const env = {
   },
 
   cookieSecret: e.COOKIE_SECRET,
+  smtpSecret: e.SMTP_SECRET || e.COOKIE_SECRET,
+
+  smtpSubmission: {
+    enabled: e.SMTP_SUBMISSION_ENABLED === 'true',
+    port: e.SMTP_SUBMISSION_PORT,
+    tlsKey: e.SMTP_SUBMISSION_TLS_KEY || null,
+    tlsCert: e.SMTP_SUBMISSION_TLS_CERT || null,
+  },
 
   supabase: {
     url: e.SUPABASE_URL,

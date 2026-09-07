@@ -3,6 +3,7 @@ import { supabase } from '../supabase.js';
 import { env } from '../env.js';
 import { cleanList, isInternal, isValidAddress, normalizeAddress, normalizeSubject } from './addresses.js';
 import { findWorkspaceAddress } from './workspaceAddresses.js';
+import { sendExternalViaWorkspace } from './smtpSender.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // deliver.js — THE delivery seam.
@@ -75,6 +76,7 @@ async function resolveThread({ inReplyTo, subject }) {
  * @param {string} p.bodyText
  * @param {string|null} [p.bodyHtml]
  * @param {string|null} [p.inReplyTo]  rfc_message_id being replied to
+ * @param {string|null} [p.relayWorkspaceId]  workspace whose SMTP relay may deliver external recipients
  * @returns {Promise<{messageId,threadId,rfcMessageId,delivered:string[],undeliverable:string[]}>}
  */
 export async function deliverMessage(p) {
@@ -101,6 +103,7 @@ export async function deliverMessage(p) {
       subject: p.subject ?? '',
       body_text: p.bodyText ?? '',
       body_html: p.bodyHtml ?? null,
+      message_mode: p.messageMode === 'chat' ? 'chat' : 'mail',
       rfc_message_id: rfc,
       in_reply_to: p.inReplyTo ?? null,
       msg_references: references,
@@ -138,6 +141,7 @@ export async function deliverMessage(p) {
     });
   }
 
+  const externalRecipients = [];
   for (const address of allRecipients) {
     if (isInternal(address)) {
       const mailboxId = await ensureMailboxByAddress(address);
@@ -147,14 +151,7 @@ export async function deliverMessage(p) {
       }
       delivered.push(address);
     } else {
-      // ── INTERNET-EMAIL SEAM (P7) ──────────────────────────────────────────
-      // Today: reject external recipients. Later: enqueue to outbound MTA here
-      // and record status 'queued' instead of 'rejected'.
-      undeliverable.push(address);
-      await supabase.from('delivery_log').insert({
-        message_id: message.id, address, status: 'rejected',
-        detail: 'External delivery not enabled (internal-only phase)',
-      });
+      externalRecipients.push(address);
     }
   }
 
@@ -164,6 +161,47 @@ export async function deliverMessage(p) {
   }
   for (const address of delivered) {
     await supabase.from('delivery_log').insert({ message_id: message.id, address, status: 'internal' });
+  }
+
+  // ── EXTERNAL DELIVERY ──────────────────────────────────────────────────────
+  // Only relay externally when the caller passed a workspace whose SMTP relay is
+  // configured AND enabled. Otherwise external recipients stay rejected, exactly
+  // as before — no relay means no surprise third-party charges.
+  if (externalRecipients.length) {
+    let relayed = false;
+    if (p.relayWorkspaceId) {
+      const result = await sendExternalViaWorkspace({
+        workspaceId: p.relayWorkspaceId,
+        from: fromAddress,
+        fromAddress,
+        to: externalRecipients,
+        subject: p.subject ?? '',
+        text: p.bodyText ?? '',
+        html: p.bodyHtml ?? null,
+        headers: { 'Message-ID': rfc, ...(p.inReplyTo ? { 'In-Reply-To': p.inReplyTo } : {}) },
+      });
+      if (result.ok) {
+        relayed = true;
+        for (const address of externalRecipients) {
+          delivered.push(address);
+          await supabase.from('delivery_log').insert({ message_id: message.id, address, status: 'sent', detail: 'Relayed via workspace SMTP' });
+        }
+      } else {
+        for (const address of externalRecipients) {
+          undeliverable.push(address);
+          await supabase.from('delivery_log').insert({ message_id: message.id, address, status: 'bounced', detail: (result.error || 'SMTP relay failed').slice(0, 500) });
+        }
+      }
+    }
+    if (!relayed && !p.relayWorkspaceId) {
+      for (const address of externalRecipients) {
+        undeliverable.push(address);
+        await supabase.from('delivery_log').insert({
+          message_id: message.id, address, status: 'rejected',
+          detail: 'External delivery not enabled (no workspace SMTP relay)',
+        });
+      }
+    }
   }
 
   return { messageId: message.id, threadId, rfcMessageId: rfc, delivered, undeliverable };

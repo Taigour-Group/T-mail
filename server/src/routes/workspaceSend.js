@@ -6,6 +6,7 @@ import { findWorkspaceAddress } from '../lib/workspaceAddresses.js';
 import { getWorkspaceTemplate, renderWorkspaceTemplate } from '../lib/workspaceTemplates.js';
 import { deliverMessage } from '../lib/deliver.js';
 import { isInternal } from '../lib/addresses.js';
+import { getWorkspaceSmtp } from '../lib/smtp.js';
 
 export const workspaceSendRouter = Router();
 workspaceSendRouter.use(requireUser);
@@ -47,12 +48,21 @@ workspaceSendRouter.post('/', asyncH(async (req, res) => {
 
   const recipientList = Array.isArray(body.to) ? body.to : [body.to];
   const externalRecipients = recipientList.filter((address) => !isInternal(address));
+
+  // External recipients require the workspace's own SMTP relay to be configured
+  // and enabled. Without it we reject before writing any message, keeping the
+  // "no relay, no external delivery" contract.
+  let relayWorkspaceId;
   if (externalRecipients.length > 0) {
-    return res.status(503).json({
-      error: 'External customer delivery is not configured yet. T-mail currently delivers only to @tgo.com addresses.',
-      code: 'EXTERNAL_DELIVERY_NOT_CONFIGURED',
-      recipients: externalRecipients,
-    });
+    const smtp = await getWorkspaceSmtp(workspace.id);
+    if (!smtp || !smtp.enabled) {
+      return res.status(503).json({
+        error: 'External delivery requires an enabled SMTP relay for this workspace. Configure SMTP in your workspace settings first.',
+        code: 'EXTERNAL_DELIVERY_NOT_CONFIGURED',
+        recipients: externalRecipients,
+      });
+    }
+    relayWorkspaceId = workspace.id;
   }
 
   const result = await deliverMessage({
@@ -62,6 +72,7 @@ workspaceSendRouter.post('/', asyncH(async (req, res) => {
     subject: rendered.subject,
     bodyText: rendered.text,
     bodyHtml: rendered.html,
+    relayWorkspaceId,
   });
 
   res.status(201).json({ ok: true, ...result });
