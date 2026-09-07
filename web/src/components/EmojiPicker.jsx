@@ -3,19 +3,8 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { useDismiss } from '../lib/useDismiss.js';
 
-// Emoji picker built on emoji-mart, using the GOOGLE set served from OUR OWN
-// origin. Non-native emoji-mart sets normally pull a spritesheet from a jsDelivr
-// CDN; when that's blocked you get "#" placeholders (the earlier bug). We override
-// getSpritesheetURL to a file under /public, so the polished Google glyphs load
-// from the app itself — no CDN, works offline.
-//
-//   SETUP (one time, done outside this file):
-//     1. `npm install`  (adds emoji-datasource-google, pinned to 15.0.1 to match
-//        @emoji-mart/data so sprite coordinates line up)
-//     2. copy node_modules/emoji-datasource-google/img/google/sheets-256/64.png
-//        → web/public/emoji/google-64.png
-//   If that file is missing the picker shows blanks, so the copy step is required.
-//   To fall back to OS emoji instead, set SET = 'native' and drop the sprite prop.
+// Use the native set so the picker works without a CDN or a locally generated
+// image set. The selected value is still the portable Unicode character.
 //
 // We hand back the emoji's unicode character (emoji.native) so stored messages
 // stay portable, copyable and searchable — the image set only changes how the
@@ -31,11 +20,6 @@ import { useDismiss } from '../lib/useDismiss.js';
 const PANEL_W = 300; // emoji-mart's default panel width
 const PANEL_H = 435; // its default height
 const GAP = 8;
-
-// Google emoji spritesheet served from our own /public (see setup notes above).
-// Switch to 'native' + remove getSpritesheetURL to use OS emoji instead.
-const SET = 'google';
-const SPRITE_URL = '/emoji/google-64.png';
 
 export default function EmojiPicker({ onSelect, triggerClassName }) {
   const [open, setOpen] = useState(false);
@@ -116,8 +100,7 @@ export default function EmojiPicker({ onSelect, triggerClassName }) {
           <Picker
             data={data}
             onEmojiSelect={pick}
-            set={SET}
-            getSpritesheetURL={() => SPRITE_URL}
+            set="native"
             theme="light"
             navPosition="top"
             previewPosition="none"
