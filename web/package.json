@@ -1,6 +1,6 @@
 {
   "name": "tmail-web",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,6 +26,6 @@
     "autoprefixer": "^10.4.21",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
-    "vite": "^8.2.2"
+    "vite": "^7.0.0"
   }
 }

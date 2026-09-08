@@ -8,27 +8,54 @@
 // simply shows blank tiles until the sprite exists, which is the signal to run
 // `npm install` again.
 
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = resolve(here, '..');
 
-// 64px sheet matches emoji-mart's default sprite geometry.
-const src = resolve(webRoot, 'node_modules/emoji-datasource-google/img/google/sheets-256/64.png');
-const destDir = resolve(webRoot, 'public/emoji');
-const dest = resolve(destDir, 'google-64.png');
+// Keep individual files because emoji-mart requests each emoji by unified code.
+const packageRelativePath = 'emoji-datasource-google/img/google/64';
+const sheetRelativePath = 'emoji-datasource-google/img/google/sheets-256/64.png';
+const sourceCandidates = [
+  resolve(webRoot, 'node_modules', packageRelativePath),
+  resolve(webRoot, '..', 'node_modules', packageRelativePath),
+];
+const sheetCandidates = [
+  resolve(webRoot, 'node_modules', sheetRelativePath),
+  resolve(webRoot, '..', 'node_modules', sheetRelativePath),
+];
+const src = sourceCandidates.find((candidate) => existsSync(candidate));
+const sheetSrc = sheetCandidates.find((candidate) => existsSync(candidate));
+const destDir = resolve(webRoot, 'public/emoji/google/64');
+const sheetDest = resolve(webRoot, 'public/emoji/google-64.png');
+const metadataDest = resolve(webRoot, 'public/emoji/google/emoji.json');
+const localMetadataCandidates = [
+  resolve(webRoot, 'node_modules', 'emoji-datasource-google/emoji.json'),
+  resolve(webRoot, '..', 'node_modules', 'emoji-datasource-google/emoji.json'),
+];
 
-if (!existsSync(src)) {
+if (!src) {
   console.warn('[copy-emoji] emoji-datasource-google not found yet — skipping. Run `npm install` to fetch it, then `npm run copy-emoji`.');
   process.exit(0);
 }
 
 try {
   mkdirSync(destDir, { recursive: true });
-  copyFileSync(src, dest);
-  console.log(`[copy-emoji] Google emoji spritesheet → ${dest}`);
+  cpSync(src, destDir, { recursive: true });
+  if (sheetSrc) copyFileSync(sheetSrc, sheetDest);
+  const localMetadata = localMetadataCandidates.find((candidate) => existsSync(candidate));
+  if (localMetadata) {
+    copyFileSync(localMetadata, metadataDest);
+  } else {
+    const response = await fetch('https://cdnjs.cloudflare.com/ajax/libs/emoji-datasource-google/16.0.0/emoji.json');
+    if (!response.ok) throw new Error(`Google emoji metadata request failed: ${response.status}`);
+    writeFileSync(metadataDest, await response.text());
+  }
+  console.log(`[copy-emoji] Google emoji images → ${destDir}`);
+  if (sheetSrc) console.log(`[copy-emoji] Google emoji spritesheet → ${sheetDest}`);
+  console.log(`[copy-emoji] Google emoji metadata → ${metadataDest}`);
 } catch (err) {
   console.warn(`[copy-emoji] Could not copy spritesheet: ${err.message}`);
   process.exit(0);

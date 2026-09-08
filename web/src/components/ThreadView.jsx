@@ -450,7 +450,7 @@ export default function ThreadView({ threadId, folder, refreshToken = 0, onReply
                   </div>
                 )}
               <div
-                className={`group flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                className={`group flex items-start gap-1 ${isMine ? 'justify-end' : 'justify-start'}`}
                 onTouchStart={(event) => beginLongPress(event, m)}
                 onTouchEnd={endLongPress}
                 onTouchCancel={stopLongPress}
@@ -460,20 +460,6 @@ export default function ThreadView({ threadId, folder, refreshToken = 0, onReply
                   ? `relative max-w-[86%] rounded-lg border px-2.5 py-1.5 shadow-sm sm:max-w-[72%] sm:px-3 sm:py-2 ${isMine ? 'border-[#dcf8c6] bg-[#dcf8c6]' : 'border-white bg-white'}`
                   : 'relative w-full rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5'}
                 >
-                  <button
-                    className="absolute right-1 top-1 hidden h-7 w-7 place-items-center rounded-full bg-black/5 text-gray-500 opacity-0 transition hover:bg-black/10 hover:text-gray-800 focus:opacity-100 group-hover:opacity-100 sm:grid"
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onClick={(event) => openMessageMenu(event, m)}
-                    aria-label="More message actions"
-                    title="More message actions"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <circle cx="4" cy="10" r="1.5" />
-                      <circle cx="10" cy="10" r="1.5" />
-                      <circle cx="16" cy="10" r="1.5" />
-                    </svg>
-                  </button>
-
                   {!messageIsChat && (
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-center gap-3">
@@ -553,6 +539,19 @@ export default function ThreadView({ threadId, folder, refreshToken = 0, onReply
                     </div>
                   )}
                 </article>
+                <button
+                  className="mt-1 hidden h-7 w-7 shrink-0 place-items-center rounded-full bg-black/5 text-gray-500 opacity-0 transition hover:bg-black/10 hover:text-gray-800 focus:opacity-100 group-hover:opacity-100 sm:grid"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => openMessageMenu(event, m)}
+                  aria-label="More message actions"
+                  title="More message actions"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <circle cx="4" cy="10" r="1.5" />
+                    <circle cx="10" cy="10" r="1.5" />
+                    <circle cx="16" cy="10" r="1.5" />
+                  </svg>
+                </button>
               </div>
               </Fragment>
             );

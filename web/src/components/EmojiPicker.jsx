@@ -1,11 +1,43 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import data from '@emoji-mart/data';
+import baseData from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { useDismiss } from '../lib/useDismiss.js';
 
-// Use the native set so the picker works without a CDN or a locally generated
-// image set. The selected value is still the portable Unicode character.
+// ARTWORK: Google emoji PNGs served from our own origin. `scripts/copy-emoji.mjs`
+// copies emoji-datasource-google's img/google/64 into public/emoji/google/64 on
+// postinstall, so filenames are exactly `<unified lowercased>.png` — the same
+// identifier emoji-mart carries on every skin.
+const GOOGLE_IMAGE_BASE = '/emoji/google/64';
+const imageURL = (unified) => `${GOOGLE_IMAGE_BASE}/${String(unified).toLowerCase()}.png`;
+
+// WHY WE STAMP `src` ONTO THE DATA INSTEAD OF USING A SPRITESHEET:
+// emoji-mart hardcodes `spritesheet: true` for grid + search tiles, so a
+// `getImageURL` prop alone is ignored there and it falls back to a CDN
+// spritesheet positioned from each skin's `x`/`y`. The bundled dataset
+// (@emoji-mart/data → sets/15/native.json) carries NO `x`/`y`, so those offsets
+// came out `NaN%` and every tile rendered the sheet's first cell — the "#️⃣"
+// keycap. That was the "all emoji show #" bug.
 //
+// A skin's own `src` takes precedence over both branches, so setting it here
+// gets real per-emoji artwork everywhere, from our origin, with no CDN and no
+// sprite-coordinate/version alignment to keep in sync. Rows are virtualised by
+// emoji-mart, so only visible tiles are ever requested.
+//
+// emoji-mart mutates and memoises the data object it is given (module-level
+// singleton), so we patch that same object once, lazily, and hand it over.
+let patched = false;
+function googleData() {
+  if (!patched) {
+    patched = true;
+    Object.values(baseData.emojis || {}).forEach((emoji) => {
+      (emoji.skins || []).forEach((skin) => {
+        if (skin.unified && !skin.src) skin.src = imageURL(skin.unified);
+      });
+    });
+  }
+  return baseData;
+}
+
 // We hand back the emoji's unicode character (emoji.native) so stored messages
 // stay portable, copyable and searchable — the image set only changes how the
 // picker *looks*, not what gets inserted.
@@ -98,9 +130,11 @@ export default function EmojiPicker({ onSelect, triggerClassName }) {
           style={{ left: pos ? pos.left : -9999, top: pos ? pos.top : -9999, width: PANEL_W }}
         >
           <Picker
-            data={data}
+            data={googleData()}
             onEmojiSelect={pick}
-            set="native"
+            set="google"
+            getImageURL={(set, unified) => imageURL(unified)}
+            getSpritesheetURL={() => '/emoji/google-64.png'}
             theme="light"
             navPosition="top"
             previewPosition="none"
