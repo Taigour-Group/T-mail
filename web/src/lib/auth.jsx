@@ -2,20 +2,25 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { api } from './api.js';
 
 const AuthCtx = createContext(null);
+const INITIAL_LOADING_DURATION = 2000;
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    const startedAt = Date.now();
+    if (!silent) setLoading(true);
     try {
       const { user: u } = await api.me();
       setUser(u);
     } catch {
       setUser(null);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        const remaining = INITIAL_LOADING_DURATION - (Date.now() - startedAt);
+        window.setTimeout(() => setLoading(false), Math.max(0, remaining));
+      }
     }
   }, []);
 

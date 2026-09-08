@@ -4,12 +4,13 @@ import Login from './pages/Login.jsx';
 import Mailbox from './pages/Mailbox.jsx';
 import Guide from './pages/Guide.jsx';
 import WorkspaceDashboard from './pages/WorkspaceDashboard.jsx';
+import LoadingScreen from './components/LoadingScreen.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="h-full grid place-items-center text-gray-500">Loading…</div>;
+    return <LoadingScreen />;
   }
 
   return (
